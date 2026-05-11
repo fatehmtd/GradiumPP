@@ -1,6 +1,7 @@
 #include <CLI/CLI.hpp>
 #include <gradiumpp/gradium.hpp>
 
+#include <algorithm>
 #include <atomic>
 #include <condition_variable>
 #include <cstdlib>
@@ -37,14 +38,25 @@ int main(int argc, char* argv[])
         (std::istreambuf_iterator<char>(audioFile)),
         std::istreambuf_iterator<char>());
 
+    std::atomic<bool>       ready{false};
+    std::mutex              readyMutex;
+    std::condition_variable readyCv;
+
     std::atomic<bool>       done{false};
+    std::atomic<bool>       failed{false};
     std::mutex              doneMutex;
     std::condition_variable doneCv;
 
     gradium::AsrRealtimeClient client;
 
     client.setOnParsedMessage([&](const gradium::AsrRealtimeMessage& msg) {
-        if (msg.type == "text") {
+        if (msg.type == "ready") {
+            {
+                std::lock_guard<std::mutex> lk(readyMutex);
+                ready.store(true);
+            }
+            readyCv.notify_all();
+        } else if (msg.type == "text") {
             std::cout << "[partial] " << msg.segment.text << "\n";
         } else if (msg.type == "end_text") {
             std::cout << "[final]   " << msg.segment.text
@@ -63,6 +75,7 @@ int main(int argc, char* argv[])
             std::cerr << "ASR error: " << msg.error_message << "\n";
             {
                 std::lock_guard<std::mutex> lk(doneMutex);
+                failed.store(true);
                 done.store(true);
             }
             doneCv.notify_all();
@@ -73,6 +86,7 @@ int main(int argc, char* argv[])
         std::cerr << "WebSocket error: " << err << "\n";
         {
             std::lock_guard<std::mutex> lk(doneMutex);
+            failed.store(true);
             done.store(true);
         }
         doneCv.notify_all();
@@ -81,7 +95,10 @@ int main(int argc, char* argv[])
     client.setOnClosed([&] {
         {
             std::lock_guard<std::mutex> lk(doneMutex);
-            done.store(true);
+            if (!done.load()) {
+                failed.store(true);
+                done.store(true);
+            }
         }
         doneCv.notify_all();
     });
@@ -90,6 +107,15 @@ int main(int argc, char* argv[])
         gradium::AsrRealtimeSetup setup;
         setup.input_format = inputFormat;
         client.connect(apiKeyEnv, setup);
+
+        {
+            std::unique_lock<std::mutex> lk(readyMutex);
+            readyCv.wait(lk, [&] { return ready.load() || failed.load(); });
+        }
+
+        if (failed.load()) {
+            throw std::runtime_error("[gradiumpp] ASR session ended before ready");
+        }
 
         constexpr std::size_t chunkSize = 3840;
         std::size_t offset = 0;
@@ -110,6 +136,11 @@ int main(int argc, char* argv[])
         }
 
         client.close();
+        if (failed.load()) {
+            std::cerr << "\nTranscription did not complete successfully.\n";
+            return 1;
+        }
+
         std::cout << "\nTranscription complete.\n";
     } catch (const std::exception& ex) {
         std::cerr << "ASR realtime failed: " << ex.what() << "\n";

@@ -113,17 +113,24 @@ std::string VoiceClient::createVoice(const VoiceCreateRequest& request)
     transport::MultipartFile file;
     file.field_name   = "audio_file";
     file.file_path    = request.audio_file_path;
-    file.content_type = "audio/wav";
     req.multipart_files.push_back(std::move(file));
 
-    // Additional fields as form parts are handled by adding text parts.
-    // libcurl's mime API used in curl_http_transport supports only file parts via
-    // multipart_files; for simplicity we append form fields as query params here.
-    std::string qs = "?name=" + request.name;
-    if (!request.description.empty()) qs += "&description=" + request.description;
-    if (!request.language.empty())    qs += "&language="    + request.language;
-    if (request.start_s != 0.0)       qs += "&start_s="     + std::to_string(request.start_s);
-    req.url += qs;
+    req.multipart_fields.push_back({"name", request.name, {}});
+    if (!request.description.empty()) {
+        req.multipart_fields.push_back({"description", request.description, {}});
+    }
+    if (!request.language.empty()) {
+        req.multipart_fields.push_back({"language", request.language, {}});
+    }
+    if (!request.input_format.empty()) {
+        req.multipart_fields.push_back({"input_format", request.input_format, {}});
+    }
+    if (request.start_s != 0.0) {
+        req.multipart_fields.push_back({"start_s", std::to_string(request.start_s), {}});
+    }
+    for (const auto& tag : request.tags) {
+        req.multipart_fields.push_back({"tags", tag, {}});
+    }
 
     auto response = _httpTransport->send(req);
     detail::throwIfError(response, "createVoice");

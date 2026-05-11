@@ -3,6 +3,7 @@
 #include <libwebsockets.h>
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstring>
 #include <map>
@@ -15,9 +16,59 @@
 
 namespace gradium::transport {
 
+namespace {
+
+void emitError(LwsWebSocketTransportImpl* impl, const std::string& error)
+{
+    IWebSocketTransport::ErrorHandler cb;
+    {
+        std::lock_guard<std::mutex> g(impl->_callbackMutex);
+        cb = impl->_onError;
+    }
+    if (cb) {
+        cb(error);
+    }
+}
+
+void resetConnectionState(LwsWebSocketTransportImpl* impl)
+{
+    impl->_stopping.store(false);
+    impl->_closing.store(false);
+    impl->_isOpen.store(false);
+    impl->_connectDone = false;
+    impl->_connectFailed = false;
+    impl->_connectError.clear();
+    impl->_fragBuf.clear();
+    impl->_fragIsBinary = false;
+    impl->_wsi = nullptr;
+
+    std::queue<LwsWebSocketTransportImpl::OutboundMsg> emptyQueue;
+    std::lock_guard<std::mutex> lk(impl->_queueMutex);
+    impl->_sendQueue.swap(emptyQueue);
+}
+
+void cleanupConnection(LwsWebSocketTransportImpl* impl)
+{
+    impl->_stopping.store(true);
+    if (impl->_ctx) {
+        lws_cancel_service(impl->_ctx);
+    }
+    if (impl->_serviceThread.joinable()) {
+        impl->_serviceThread.join();
+    }
+    if (impl->_ctx) {
+        lws_context_destroy(impl->_ctx);
+        impl->_ctx = nullptr;
+    }
+    impl->_wsi = nullptr;
+}
+
+} // namespace
+
 // ---------------------------------------------------------------------------
 // URL parser
 // ---------------------------------------------------------------------------
+
 namespace {
 
 struct ParsedWsUrl {
@@ -210,10 +261,16 @@ static int lwsCallback(lws* wsi, lws_callback_reasons reason,
         if (!impl->_sendQueue.empty()) {
             auto& msg           = impl->_sendQueue.front();
             const size_t paylen = msg.data.size() - LWS_PRE;
-            lws_write(wsi,
-                      msg.data.data() + LWS_PRE,
-                      paylen,
-                      msg.is_binary ? LWS_WRITE_BINARY : LWS_WRITE_TEXT);
+            const int written = lws_write(wsi,
+                                          msg.data.data() + LWS_PRE,
+                                          paylen,
+                                          msg.is_binary ? LWS_WRITE_BINARY : LWS_WRITE_TEXT);
+            if (written < 0 || static_cast<size_t>(written) != paylen) {
+                impl->_closing.store(true);
+                impl->_isOpen.store(false);
+                emitError(impl, "[gradiumpp] lws_write failed");
+                return -1;
+            }
             impl->_sendQueue.pop();
             if (!impl->_sendQueue.empty()) {
                 lws_callback_on_writable(wsi);
@@ -305,6 +362,9 @@ void LwsWebSocketTransport::connect(const WebSocketConnectOptions& options)
 {
     lws_set_log_level(LLL_ERR | LLL_WARN, nullptr);
 
+    cleanupConnection(_impl.get());
+    resetConnectionState(_impl.get());
+
     const ParsedWsUrl parsed = parseWsUrl(options.url);
     _impl->_address = parsed.address;
     _impl->_port    = parsed.port;
@@ -348,15 +408,19 @@ void LwsWebSocketTransport::connect(const WebSocketConnectOptions& options)
 
     {
         std::unique_lock<std::mutex> lk(_impl->_connectMutex);
-        _impl->_connectCv.wait(lk, [this] { return _impl->_connectDone; });
+        constexpr auto connectTimeout = std::chrono::seconds(15);
+        const bool connected = _impl->_connectCv.wait_for(
+            lk,
+            connectTimeout,
+            [this] { return _impl->_connectDone; });
+        if (!connected) {
+            _impl->_connectFailed = true;
+            _impl->_connectError = "connection timed out";
+        }
     }
 
     if (_impl->_connectFailed) {
-        _impl->_stopping.store(true);
-        lws_cancel_service(_impl->_ctx);
-        _impl->_serviceThread.join();
-        lws_context_destroy(_impl->_ctx);
-        _impl->_ctx = nullptr;
+        cleanupConnection(_impl.get());
         throw std::runtime_error("[gradiumpp] WebSocket connect failed: "
                                  + _impl->_connectError);
     }

@@ -15,6 +15,12 @@ struct MultipartFile {
     std::string content_type; ///< empty = auto-detect from extension
 };
 
+struct MultipartField {
+    std::string field_name;
+    std::string value;
+    std::string content_type; ///< empty = default text/plain handling
+};
+
 struct HttpRequest {
     HttpMethod  method{HttpMethod::Get};
     std::string url;
@@ -23,6 +29,7 @@ struct HttpRequest {
     std::string body;                          ///< JSON or text body
     std::vector<std::uint8_t> binary_body;     ///< raw audio bytes (ASR REST POST)
     std::vector<MultipartFile> multipart_files; ///< mutually exclusive with body/binary_body
+    std::vector<MultipartField> multipart_fields;
     long timeout_ms{0};
 };
 
