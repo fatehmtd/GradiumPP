@@ -1,6 +1,7 @@
 build/
+.*/
+**/.*/
 .cache/
-.claude/
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake

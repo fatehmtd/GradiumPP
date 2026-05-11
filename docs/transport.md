@@ -1,83 +1,55 @@
-# GradiumPP — Transport Layer
+# Transport Layer
 
-GradiumPP separates networking concerns from protocol logic through two abstract interfaces.
-All clients accept optional shared pointers to custom implementations, enabling testing with
-mock transports or integration with alternative networking libraries.
+The library keeps transport code separate from the client logic. REST clients depend on `IHttpTransport`, and streaming clients depend on `IWebSocketTransport`. You can pass your own implementations if you need to test against mocks or plug in a different networking stack.
 
-## HTTP Transport (`IHttpTransport`)
+## HTTP transport
 
-```cpp
-namespace gradium::transport {
-    class IHttpTransport {
-    public:
-        virtual HttpResponse send(const HttpRequest& request) = 0;
-    };
-}
-```
+`IHttpTransport` exposes a single `send()` method that takes an `HttpRequest` and returns an `HttpResponse`.
 
-- **Does NOT throw on HTTP ≥ 400** — callers inspect `status_code` and throw `GradiumApiException`
-- **Throws `std::runtime_error`** only on I/O or TLS failures (DNS, timeout, connection refused)
-- Not required to be thread-safe
+Behavior is intentionally simple:
 
-### `HttpRequest` fields
+- HTTP error responses are returned to the caller. Client code decides when to throw `GradiumApiException`.
+- Transport implementations throw `std::runtime_error` for network, TLS, and other I/O failures.
+- Thread safety is not required by the interface.
 
-| Field           | Purpose                                      |
-|-----------------|----------------------------------------------|
-| `method`        | `Get`, `Post`, `Put`, or `Delete`            |
-| `url`           | Full URL including query string if needed    |
-| `headers`       | Additional headers (x-api-key is set here)   |
-| `content_type`  | Sets `Content-Type` header                   |
-| `body`          | JSON or text body (mutually exclusive with binary_body/multipart) |
-| `binary_body`   | Raw audio bytes (used for ASR REST POST)     |
-| `multipart_files` | File upload (used for voice creation)      |
-| `timeout_ms`    | Request timeout in milliseconds (0 = default)|
+`HttpRequest` carries the request method, full URL, headers, content type, and one of the supported body formats. Raw audio uploads use `binary_body`. Voice uploads use `multipart_files`.
 
-### Platform implementation: `CurlHttpTransport`
+The default implementation is `CurlHttpTransport`.
 
-Built from libcurl 8.11.1 via FetchContent. TLS backend:
-- **Windows**: Schannel (no OpenSSL dependency)
-- **Linux/macOS**: OpenSSL
+- Windows uses libcurl with Schannel.
+- Linux and macOS use libcurl with OpenSSL.
 
-## WebSocket Transport (`IWebSocketTransport`)
+## WebSocket transport
 
-```cpp
-namespace gradium::transport {
-    class IWebSocketTransport {
-    public:
-        virtual void connect(const WebSocketConnectOptions& options) = 0;
-        virtual void sendText(const std::string& message) = 0;
-        virtual void sendBinary(const std::vector<uint8_t>& payload) = 0;
-        virtual void close() = 0;
-        virtual bool isOpen() const = 0;
-        // setOnOpen, setOnTextMessage, setOnBinaryMessage, setOnError, setOnClose
-    };
-}
-```
+`IWebSocketTransport` exposes `connect()`, `sendText()`, `sendBinary()`, `close()`, and `isOpen()`, along with the usual message and lifecycle callbacks.
 
-- Register all `setOn*` handlers **before** calling `connect()`
-- `connect()` blocks until the HTTP upgrade handshake completes
-- `sendText()` / `sendBinary()` / `close()` / `isOpen()` are thread-safe
-- Handler callbacks fire from the internal receive-loop thread — do not call `sendText()` from inside a callback
+The expected calling pattern is:
 
-### Platform implementations
+1. Register callbacks.
+2. Call `connect()`.
+3. Send messages after the handshake completes.
 
-| Platform | Class | Backend |
-|----------|-------|---------|
-| Windows  | `WinHttpWebSocketTransport` | WinHTTP (built-in, no extra deps) |
-| Linux/macOS | `LwsWebSocketTransport` | libwebsockets 4.3.3 + OpenSSL |
+Additional behavior to keep in mind:
 
-CMake selects the correct implementation at configure time via `if(WIN32)`.
+- `connect()` blocks until the HTTP upgrade handshake finishes.
+- `sendText()`, `sendBinary()`, `close()`, and `isOpen()` are safe to call from different threads.
+- Receive callbacks run on the transport's internal thread, so avoid sending new messages directly from inside a callback.
 
-## Custom Transport Injection
+Platform defaults:
+
+- Windows: `WinHttpWebSocketTransport`
+- Linux/macOS: `LwsWebSocketTransport`
+
+## Custom transports
+
+You can inject your own transport implementations through the client constructors.
 
 ```cpp
-// Example: inject a mock HTTP transport for testing
 auto mockHttp = std::make_shared<MyMockHttpTransport>();
 gradium::TtsRestClient client("api-key", mockHttp);
 ```
 
 ```cpp
-// Example: inject a custom WebSocket transport
 auto myWs = std::make_shared<MyWebSocketTransport>();
 gradium::TtsRealtimeClient client(myWs);
 ```

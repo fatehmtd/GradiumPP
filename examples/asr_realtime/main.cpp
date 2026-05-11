@@ -20,17 +20,14 @@ int main(int argc, char* argv[])
 
     std::string filePath;
     std::string inputFormat = "pcm";
-    std::string language;
     bool        showVad     = false;
 
-    CLI::App app{"Transcribe an audio file using the Gradium ASR WebSocket API"};
-    app.add_option("--file",   filePath,    "Path to raw PCM audio file (24 kHz 16-bit mono)")->required();
-    app.add_option("--format", inputFormat, "Audio input format (default: pcm = 24 kHz 16-bit mono)");
-    app.add_option("--lang",   language,    "Language hint (en, fr, de, es, pt)");
-    app.add_flag  ("--vad",    showVad,     "Print Voice Activity Detection probabilities");
+    CLI::App app{"Transcribe an audio file over the Gradium ASR WebSocket API"};
+    app.add_option("--file",   filePath,    "Path to a raw PCM file (24 kHz, 16-bit, mono)")->required();
+    app.add_option("--format", inputFormat, "Input format");
+    app.add_flag  ("--vad",    showVad,     "Print VAD probabilities");
     CLI11_PARSE(app, argc, argv);
 
-    // Read the entire audio file
     std::ifstream audioFile(filePath, std::ios::binary);
     if (!audioFile.is_open()) {
         std::cerr << "Error: cannot open audio file: " << filePath << "\n";
@@ -92,14 +89,8 @@ int main(int argc, char* argv[])
     try {
         gradium::AsrRealtimeSetup setup;
         setup.input_format = inputFormat;
-        if (!language.empty()) {
-            // Language is passed via json_config at connect time — add it post-setup
-            // by configuring before connecting (for simplicity we set it in json_config
-            // on the AsrConfig used for REST; for WS it goes in setup message json_config).
-        }
         client.connect(apiKeyEnv, setup);
 
-        // Stream audio in 3840-byte chunks (1920 samples × 2 bytes = 80 ms at 24 kHz)
         constexpr std::size_t chunkSize = 3840;
         std::size_t offset = 0;
         while (offset < audioData.size()) {
@@ -113,7 +104,6 @@ int main(int argc, char* argv[])
         client.sendFlush("flush-1");
         client.sendEndOfStream();
 
-        // Wait for completion
         {
             std::unique_lock<std::mutex> lk(doneMutex);
             doneCv.wait(lk, [&] { return done.load(); });

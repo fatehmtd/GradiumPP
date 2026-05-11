@@ -21,16 +21,15 @@ int main(int argc, char* argv[])
     }
 
     std::string voiceId;
-    CLI::App app{"Multiplex three TTS streams over one WebSocket connection"};
-    app.add_option("--voice", voiceId, "Voice UID for all streams")->required();
+    CLI::App app{"Run three TTS streams over one WebSocket connection"};
+    app.add_option("--voice", voiceId, "Voice ID for all streams")->required();
     CLI11_PARSE(app, argc, argv);
 
-    // Three streams, each writing to a separate file
     const std::vector<std::string> reqIds   = {"req-1", "req-2", "req-3"};
     const std::vector<std::string> texts    = {
-        "Hello from stream one.",
-        "Greetings from stream two.",
-        "Welcome from the third stream."
+        "This is the first stream.",
+        "This is the second stream.",
+        "This is the third stream."
     };
     const std::vector<std::string> outPaths = {
         "tts_multiplex_1.wav",
@@ -85,7 +84,6 @@ int main(int argc, char* argv[])
     try {
         client.connect(apiKeyEnv);
 
-        // Set up all three streams — keep connection open for multiple EOS
         for (const auto& reqId : reqIds) {
             gradium::TtsRealtimeSetup setup;
             setup.voice_id        = voiceId;
@@ -95,13 +93,11 @@ int main(int argc, char* argv[])
             client.setup(setup);
         }
 
-        // Send text for all three
         for (std::size_t i = 0; i < reqIds.size(); ++i) {
             client.sendText(texts[i], reqIds[i]);
             client.sendEndOfStream(reqIds[i]);
         }
 
-        // Wait for all to finish
         {
             std::unique_lock<std::mutex> lk(doneMutex);
             doneCv.wait(lk, [&] { return finished.load() == totalStreams; });

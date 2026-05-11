@@ -4,15 +4,10 @@ A C++17 client library for the [Gradium](https://docs.gradium.ai) Text-to-Speech
 
 ## Features
 
-- **TTS REST** — single HTTP POST, returns raw audio bytes
-- **TTS WebSocket** — real-time streaming with sub-second latency; multiplexing support
-- **ASR REST** — transcribe pre-recorded audio files
-- **ASR WebSocket** — real-time streaming with Voice Activity Detection (VAD)
-- **Voice Management** — list, create, update, and delete custom voices
-- **Pronunciation Dictionaries** — manage custom pronunciation rules
-- **Credits/Usage** — query remaining API credits
-- **Pluggable transport** — inject custom HTTP/WebSocket backends for testing
-- **Multi-platform** — Windows (WinHTTP), Linux/macOS (libwebsockets)
+- REST and WebSocket clients for TTS and ASR
+- Voice, pronunciation dictionary, and credits endpoints
+- Replaceable HTTP and WebSocket transports for testing or custom integration
+- Windows support through WinHTTP and Unix-like platforms through libwebsockets
 
 ## Requirements
 
@@ -86,28 +81,9 @@ gradium::TtsRestClient client("api-key", myHttp);
 
 ## Constants
 
-All string constants are `constexpr const char*` in named namespaces — no raw string literals needed in user code.
+Common API strings are exposed as `constexpr const char*` values in named namespaces. That keeps call sites readable and avoids scattering endpoint or format strings through application code.
 
-### Voice IDs (`voice_constants.hpp`)
-
-237 catalog voices organized by language and dialect:
-
-```text
-gradium::voices::en::american   — 71 voices  (emma, abigail, john, …)
-gradium::voices::en::british    — 21 voices  (eva, jack, kelly, …)
-gradium::voices::en::australian —  6 voices  (hunter, samuel, …)
-gradium::voices::en::other      —  4 voices  (arjun, michelle, …)
-gradium::voices::fr::french     — 40 voices  (elise, leo, sarah, …)
-gradium::voices::fr::canadian   —  3 voices  (melanie, maxime, …)
-gradium::voices::de             — 50 voices  (mia, maximilian, …)
-gradium::voices::es::spanish    — 11 voices  (sergio, sofia, …)
-gradium::voices::es::mexican    —  6 voices  (valentina, adrian, …)
-gradium::voices::es::other      —  3 voices  (javier, carmen, …)
-gradium::voices::pt::brazilian  — 17 voices  (alice, davi, …)
-gradium::voices::pt::portuguese —  7 voices  (rodrigo, bruna, …)
-```
-
-Usage:
+Voice IDs are available in `voice_constants.hpp`:
 
 ```cpp
 config.voice_id = gradium::voices::en::american::emma;
@@ -115,45 +91,38 @@ config.voice_id = gradium::voices::fr::french::elise;
 config.voice_id = gradium::voices::de::mia;
 ```
 
-Duplicate names within the same dialect are disambiguated with a `_2` suffix
-(e.g. `gradium::voices::fr::french::sarah` and `gradium::voices::fr::french::sarah_2`).
+Duplicate names within the same dialect use a `_2` suffix when needed.
 
-### TTS Formats & Models (`api_constants.hpp`)
+TTS formats and models:
 
 ```cpp
-// Output formats
 gradium::tts::output_formats::wav        // default — 48 kHz
 gradium::tts::output_formats::pcm
 gradium::tts::output_formats::opus
-gradium::tts::output_formats::ulaw_8000  // telephony, fixed 8 kHz
+gradium::tts::output_formats::ulaw_8000
 gradium::tts::output_formats::alaw_8000
-gradium::tts::output_formats::pcm_8000   // fixed sample-rate variants
+gradium::tts::output_formats::pcm_8000
 gradium::tts::output_formats::pcm_16000
 gradium::tts::output_formats::pcm_24000
 gradium::tts::output_formats::pcm_32000
 gradium::tts::output_formats::pcm_48000
-
-// Model
 gradium::tts::models::default_model
 ```
 
-### ASR Formats & Models (`api_constants.hpp`)
+ASR formats and models:
 
 ```cpp
-// Input formats
-gradium::asr::input_formats::pcm         // default — 24 kHz 16-bit LE mono
+gradium::asr::input_formats::pcm
 gradium::asr::input_formats::wav
 gradium::asr::input_formats::opus
 gradium::asr::input_formats::ulaw_8000
 gradium::asr::input_formats::mulaw_8000
 gradium::asr::input_formats::alaw_8000
-gradium::asr::input_formats::pcm_8000    // fixed sample-rate variants
+gradium::asr::input_formats::pcm_8000
 gradium::asr::input_formats::pcm_16000
 gradium::asr::input_formats::pcm_24000
 gradium::asr::input_formats::pcm_32000
 gradium::asr::input_formats::pcm_48000
-
-// Model
 gradium::asr::models::default_model
 ```
 
@@ -178,11 +147,11 @@ export GRADIUM_API_KEY=gd_your_api_key_here
 
 ## Transport Architecture
 
-See [docs/transport.md](docs/transport.md) for details on the pluggable transport layer.
+See [docs/transport.md](docs/transport.md) for transport behavior and platform notes.
 
-## API Coverage
+## Endpoint Reference
 
-See [docs/api_coverage.md](docs/api_coverage.md) for the full endpoint coverage matrix.
+See [docs/api_coverage.md](docs/api_coverage.md) for the currently implemented endpoints.
 
 ## License
 

@@ -24,10 +24,10 @@ int main(int argc, char* argv[])
     std::string outputFormat = "wav";
     std::string outPath      = "tts_realtime_output.wav";
 
-    CLI::App app{"Generate speech from text using the Gradium TTS WebSocket API"};
+    CLI::App app{"Generate speech over the Gradium TTS WebSocket API"};
     app.add_option("--text",   text,         "Text to synthesize")->required();
-    app.add_option("--voice",  voiceId,      "Voice UID from the Gradium voice library")->required();
-    app.add_option("--format", outputFormat, "Audio output format (wav, pcm, opus, ...)");
+    app.add_option("--voice",  voiceId,      "Voice ID")->required();
+    app.add_option("--format", outputFormat, "Output format");
     app.add_option("--out",    outPath,      "Output file path");
     CLI11_PARSE(app, argc, argv);
 
@@ -106,7 +106,6 @@ int main(int argc, char* argv[])
         setup.output_format = outputFormat;
         client.setup(setup);
 
-        // Wait for server "ready" before sending text
         {
             std::unique_lock<std::mutex> lk(readyMutex);
             readyCv.wait(lk, [&] { return ready.load(); });
@@ -115,7 +114,6 @@ int main(int argc, char* argv[])
         client.sendText(text);
         client.sendEndOfStream();
 
-        // Wait for completion
         {
             std::unique_lock<std::mutex> lk(doneMutex);
             doneCv.wait(lk, [&] { return done.load(); });

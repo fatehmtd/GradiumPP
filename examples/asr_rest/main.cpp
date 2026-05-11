@@ -19,9 +19,9 @@ int main(int argc, char* argv[])
     std::string modelName   = "default";
     std::string language;
 
-    CLI::App app{"Transcribe an audio file using the Gradium ASR REST API"};
+    CLI::App app{"Transcribe an audio file with the Gradium ASR REST API"};
     app.add_option("--file",   filePath,    "Path to audio file")->required();
-    app.add_option("--format", inputFormat, "Audio input format (wav, pcm, opus, ...)");
+    app.add_option("--format", inputFormat, "Input format");
     app.add_option("--model",  modelName,   "ASR model name");
     app.add_option("--lang",   language,    "Language hint (en, fr, de, es, pt)");
     CLI11_PARSE(app, argc, argv);
@@ -29,8 +29,8 @@ int main(int argc, char* argv[])
     gradium::AsrRestClient client(apiKeyEnv);
 
     gradium::AsrConfig config;
-    config.input_format  = inputFormat;
-    config.model_name    = modelName;
+    config.input_format       = inputFormat;
+    config.model_name         = modelName;
     config.json_config.language = language;
 
     try {

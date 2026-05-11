@@ -14,17 +14,15 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    std::string text = "Setting off on an adventure, I ventured into the unknown. "
-                       "Every step brought new discoveries, every turn revealed something unexpected. "
-                       "The world was full of possibilities waiting to be explored.";
+    std::string text = "This is a sample request for the Gradium TTS REST client.";
     std::string voiceId = gradium::voices::en::american::abigail;
     std::string outputFormat = "wav";
     std::string outPath      = "tts_output.wav";
 
-    CLI::App app{"Generate speech from text using the Gradium TTS REST API"};
+    CLI::App app{"Generate speech with the Gradium TTS REST API"};
     app.add_option("--text",   text,         "Text to synthesize");
-    app.add_option("--voice",  voiceId,      "Voice UID from the Gradium voice library");
-    app.add_option("--format", outputFormat, "Audio output format (wav, pcm, opus, ...)");
+    app.add_option("--voice",  voiceId,      "Voice ID");
+    app.add_option("--format", outputFormat, "Output format");
     app.add_option("--out",    outPath,      "Output file path");
     CLI11_PARSE(app, argc, argv);
 
