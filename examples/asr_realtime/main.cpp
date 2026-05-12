@@ -127,7 +127,6 @@ int main(int argc, char* argv[])
             offset = end;
         }
 
-        client.sendFlush("flush-1");
         client.sendEndOfStream();
 
         {

@@ -16,6 +16,50 @@
 
 namespace gradium::transport {
 
+// ---------------------------------------------------------------------------
+// Impl
+// ---------------------------------------------------------------------------
+
+struct LwsWebSocketTransportImpl {
+    std::string _address;
+    int         _port{0};
+    std::string _path;
+    bool        _tls{true};
+    std::map<std::string, std::string> _headers;
+
+    lws_context* _ctx{nullptr};
+    lws*         _wsi{nullptr};
+
+    std::thread       _serviceThread;
+    std::atomic<bool> _stopping{false};
+
+    std::mutex              _connectMutex;
+    std::condition_variable _connectCv;
+    bool        _connectDone{false};
+    bool        _connectFailed{false};
+    std::string _connectError;
+
+    struct OutboundMsg {
+        bool                       is_binary{false};
+        std::vector<unsigned char> data;
+    };
+    std::mutex              _queueMutex;
+    std::queue<OutboundMsg> _sendQueue;
+
+    std::atomic<bool> _closing{false};
+
+    std::vector<uint8_t> _fragBuf;
+    bool _fragIsBinary{false};
+
+    mutable std::mutex                        _callbackMutex;
+    IWebSocketTransport::OpenHandler          _onOpen;
+    IWebSocketTransport::TextMessageHandler   _onText;
+    IWebSocketTransport::BinaryMessageHandler _onBinary;
+    IWebSocketTransport::ErrorHandler         _onError;
+    IWebSocketTransport::CloseHandler         _onClose;
+    std::atomic<bool>                         _isOpen{false};
+};
+
 namespace {
 
 void emitError(LwsWebSocketTransportImpl* impl, const std::string& error)
@@ -112,50 +156,6 @@ ParsedWsUrl parseWsUrl(const std::string& url)
 } // namespace
 
 // ---------------------------------------------------------------------------
-// Impl
-// ---------------------------------------------------------------------------
-
-struct LwsWebSocketTransportImpl {
-    std::string _address;
-    int         _port{0};
-    std::string _path;
-    bool        _tls{true};
-    std::map<std::string, std::string> _headers;
-
-    lws_context* _ctx{nullptr};
-    lws*         _wsi{nullptr};
-
-    std::thread       _serviceThread;
-    std::atomic<bool> _stopping{false};
-
-    std::mutex              _connectMutex;
-    std::condition_variable _connectCv;
-    bool        _connectDone{false};
-    bool        _connectFailed{false};
-    std::string _connectError;
-
-    struct OutboundMsg {
-        bool                       is_binary{false};
-        std::vector<unsigned char> data;
-    };
-    std::mutex              _queueMutex;
-    std::queue<OutboundMsg> _sendQueue;
-
-    std::atomic<bool> _closing{false};
-
-    std::vector<uint8_t> _fragBuf;
-    bool _fragIsBinary{false};
-
-    mutable std::mutex                        _callbackMutex;
-    IWebSocketTransport::OpenHandler          _onOpen;
-    IWebSocketTransport::TextMessageHandler   _onText;
-    IWebSocketTransport::BinaryMessageHandler _onBinary;
-    IWebSocketTransport::ErrorHandler         _onError;
-    IWebSocketTransport::CloseHandler         _onClose;
-    std::atomic<bool>                         _isOpen{false};
-};
-
-// ---------------------------------------------------------------------------
 // Forward declarations
 // ---------------------------------------------------------------------------
 
@@ -244,7 +244,15 @@ static int lwsCallback(lws* wsi, lws_callback_reasons reason,
                     std::lock_guard<std::mutex> g(impl->_callbackMutex);
                     cb = impl->_onText;
                 }
-                if (cb) cb(std::string(impl->_fragBuf.begin(), impl->_fragBuf.end()));
+                if (cb) {
+                    try {
+                        cb(std::string(impl->_fragBuf.begin(), impl->_fragBuf.end()));
+                    } catch (const std::exception& ex) {
+                        emitError(impl, std::string("[gradiumpp] text message callback threw: ") + ex.what());
+                    } catch (...) {
+                        emitError(impl, "[gradiumpp] text message callback threw unknown exception");
+                    }
+                }
             }
             impl->_fragBuf.clear();
         }

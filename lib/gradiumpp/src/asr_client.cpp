@@ -21,6 +21,13 @@ namespace {
 
 using json = nlohmann::json;
 
+std::string audioContentType(const std::string& input_format)
+{
+    if (input_format == "wav")  return "audio/wav";
+    if (input_format == "opus") return "audio/opus";
+    return "audio/pcm";
+}
+
 std::string urlEncode(const std::string& value)
 {
     static const char hex[] = "0123456789ABCDEF";
@@ -60,16 +67,22 @@ AsrRealtimeMessage parseAsrMessage(const std::string& raw)
         msg.frame_size = payload["frame_size"].get<int>();
 
     if (payload.contains("vad") && payload["vad"].is_array()) {
-        const auto& vad = payload["vad"];
-        if (vad.size() > 0) msg.vad.inactivity_prob_0_5s = vad[0].get<double>();
-        if (vad.size() > 1) msg.vad.inactivity_prob_1_0s = vad[1].get<double>();
-        if (vad.size() > 2) msg.vad.inactivity_prob_2_0s = vad[2].get<double>();
+        for (const auto& item : payload["vad"]) {
+            if (!item.is_object()) continue;
+            const double horizon = item.value("horizon_s",      0.0);
+            const double prob    = item.value("inactivity_prob", 0.0);
+            if      (horizon == 0.5) msg.vad.inactivity_prob_0_5s = prob;
+            else if (horizon == 1.0) msg.vad.inactivity_prob_1_0s = prob;
+            else if (horizon == 2.0) msg.vad.inactivity_prob_2_0s = prob;
+        }
     }
 
-    msg.segment.text     = detail::stringOrEmpty(payload, "text");
+    msg.segment.text      = detail::stringOrEmpty(payload, "text");
     msg.segment.stream_id = detail::stringOrEmpty(payload, "stream_id");
-    msg.segment.start_s   = payload.value("start_s", 0.0);
-    msg.segment.stop_s    = payload.value("stop_s",  0.0);
+    if (payload.contains("start_s") && payload["start_s"].is_number())
+        msg.segment.start_s = payload["start_s"].get<double>();
+    if (payload.contains("stop_s") && payload["stop_s"].is_number())
+        msg.segment.stop_s = payload["stop_s"].get<double>();
 
     return msg;
 }
@@ -120,7 +133,7 @@ std::string AsrRestClient::transcribe(const AsrConfig& config,
     transport::HttpRequest req;
     req.method       = transport::HttpMethod::Post;
     req.url          = _baseUrl + asr::endpoints::rest + buildQueryString(config);
-    req.content_type = "application/octet-stream";
+    req.content_type = audioContentType(config.input_format);
     req.binary_body  = audio_bytes;
     req.headers["x-api-key"]  = _apiKey;
     req.headers["User-Agent"] = gradium::USER_AGENT;
