@@ -21,12 +21,12 @@ int main(int argc, char* argv[])
     }
 
     std::string voiceId;
-    CLI::App app{"Run three TTS streams over one WebSocket connection"};
+    CLI::App app{ "Run three TTS streams over one WebSocket connection" };
     app.add_option("--voice", voiceId, "Voice ID for all streams")->required();
     CLI11_PARSE(app, argc, argv);
 
-    const std::vector<std::string> reqIds   = {"req-1", "req-2", "req-3"};
-    const std::vector<std::string> texts    = {
+    const std::vector<std::string> reqIds = { "req-1", "req-2", "req-3" };
+    const std::vector<std::string> texts = {
         "This is the first stream.",
         "This is the second stream.",
         "This is the third stream."
@@ -46,7 +46,7 @@ int main(int argc, char* argv[])
         }
     }
 
-    std::atomic<int>        finished{0};
+    std::atomic<int>        finished{ 0 };
     std::mutex              doneMutex;
     std::condition_variable doneCv;
     const int               totalStreams = static_cast<int>(reqIds.size());
@@ -56,39 +56,50 @@ int main(int argc, char* argv[])
     client.setOnParsedMessage([&](const gradium::TtsRealtimeMessage& msg) {
         const std::string& id = msg.client_req_id;
 
-        if (!msg.audio_base64.empty() && outputs.count(id)) {
-            auto bytes = cppcodec::base64_rfc4648::decode(msg.audio_base64);
-            outputs[id].write(reinterpret_cast<const char*>(bytes.data()),
-                              static_cast<std::streamsize>(bytes.size()));
-        }
-
-        if (msg.type == "end_of_stream" && !id.empty()) {
+        switch (msg.type) {
+        case gradium::TtsRealtimeMessage::Type::Ready: {
+            std::cout << "Stream " << id << " is ready\n";
+        } break;
+        case gradium::TtsRealtimeMessage::Type::Audio: {
+            if (!msg.audio_base64.empty() && outputs.count(id)) {
+                auto bytes = cppcodec::base64_rfc4648::decode(msg.audio_base64);
+                outputs[id].write(reinterpret_cast<const char*>(bytes.data()),
+                    static_cast<std::streamsize>(bytes.size()));
+            }
+        } break;
+        case gradium::TtsRealtimeMessage::Type::Text: {
+            std::cout << "Received text message on stream " << id << ": " << msg.text << "\n";
+        } break;
+        case gradium::TtsRealtimeMessage::Type::EndOfStream: {
             outputs[id].close();
             if (finished.fetch_add(1) + 1 == totalStreams) {
                 std::lock_guard<std::mutex> lk(doneMutex);
                 doneCv.notify_all();
             }
-        }
-
-        if (msg.type == "error") {
+        } break;
+        case gradium::TtsRealtimeMessage::Type::Error: {
             std::cerr << "[" << id << "] TTS error: " << msg.error_message << "\n";
+        } break;
+        default: {
+            std::cerr << "Received unknown message type: " << msg.type_str << "\n";
+        } break;
         }
-    });
+        });
 
     client.setOnError([&](const std::string& err) {
         std::cerr << "WebSocket error: " << err << "\n";
         std::lock_guard<std::mutex> lk(doneMutex);
         doneCv.notify_all();
-    });
+        });
 
     try {
         client.connect(apiKeyEnv);
 
         for (const auto& reqId : reqIds) {
             gradium::TtsRealtimeSetup setup;
-            setup.voice_id        = voiceId;
-            setup.output_format   = "wav";
-            setup.client_req_id   = reqId;
+            setup.voice_id = voiceId;
+            setup.output_format = "wav";
+            setup.client_req_id = reqId;
             setup.close_ws_on_eos = false;
             client.setup(setup);
         }
@@ -108,7 +119,8 @@ int main(int argc, char* argv[])
         for (std::size_t i = 0; i < reqIds.size(); ++i) {
             std::cout << "Wrote multiplex stream " << reqIds[i] << " to " << outPaths[i] << "\n";
         }
-    } catch (const std::exception& ex) {
+    }
+    catch (const std::exception& ex) {
         std::cerr << "TTS multiplex failed: " << ex.what() << "\n";
         return 1;
     }

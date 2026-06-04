@@ -27,7 +27,15 @@ TtsRealtimeMessage parseTtsMessage(const std::string& raw)
         return msg;
     }
 
-    msg.type           = detail::stringOrEmpty(payload, "type");
+    msg.type_str           = detail::stringOrEmpty(payload, "type");
+
+    if (msg.type_str == "ready") msg.type = TtsRealtimeMessage::Type::Ready;
+    else if (msg.type_str == "audio") msg.type = TtsRealtimeMessage::Type::Audio;
+    else if (msg.type_str == "text") msg.type = TtsRealtimeMessage::Type::Text;
+    else if (msg.type_str == "end_of_stream") msg.type = TtsRealtimeMessage::Type::EndOfStream;
+    else if (msg.type_str == "error") msg.type = TtsRealtimeMessage::Type::Error;
+    else msg.type = TtsRealtimeMessage::Type::UNKNOWN;
+
     msg.session_id     = detail::stringOrEmpty(payload, "session_id");
     msg.audio_base64   = detail::stringOrEmpty(payload, "audio");
     msg.text           = detail::stringOrEmpty(payload, "text");
@@ -177,7 +185,7 @@ void TtsRealtimeClient::setup(const TtsRealtimeSetup& cfg)
 }
 
 void TtsRealtimeClient::sendText(const std::string& text,
-                                  const std::string& client_req_id)
+                                  const std::string& client_req_id) const
 {
     json payload;
     payload["type"] = "text";
@@ -187,7 +195,7 @@ void TtsRealtimeClient::sendText(const std::string& text,
     _wsTransport->sendText(payload.dump());
 }
 
-void TtsRealtimeClient::sendEndOfStream(const std::string& client_req_id)
+void TtsRealtimeClient::sendEndOfStream(const std::string& client_req_id) const
 {
     json payload;
     payload["type"] = "end_of_stream";

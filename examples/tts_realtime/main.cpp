@@ -22,20 +22,20 @@ int main(int argc, char* argv[])
     std::string text;
     std::string voiceId;
     std::string outputFormat = "wav";
-    std::string outPath      = "tts_realtime_output.wav";
+    std::string outPath = "tts_realtime_output.wav";
 
-    CLI::App app{"Generate speech over the Gradium TTS WebSocket API"};
-    app.add_option("--text",   text,         "Text to synthesize")->required();
-    app.add_option("--voice",  voiceId,      "Voice ID")->required();
+    CLI::App app{ "Generate speech over the Gradium TTS WebSocket API" };
+    app.add_option("--text", text, "Text to synthesize")->required();
+    app.add_option("--voice", voiceId, "Voice ID")->required();
     app.add_option("--format", outputFormat, "Output format");
-    app.add_option("--out",    outPath,      "Output file path");
+    app.add_option("--out", outPath, "Output file path");
     CLI11_PARSE(app, argc, argv);
 
-    std::atomic<bool>       ready{false};
+    std::atomic<bool>       ready{ false };
     std::mutex              readyMutex;
     std::condition_variable readyCv;
 
-    std::atomic<bool>       done{false};
+    std::atomic<bool>       done{ false };
     std::mutex              doneMutex;
     std::condition_variable doneCv;
 
@@ -48,38 +48,49 @@ int main(int argc, char* argv[])
     gradium::TtsRealtimeClient client;
 
     client.setOnParsedMessage([&](const gradium::TtsRealtimeMessage& msg) {
-        if (msg.type == "ready") {
+
+        switch (msg.type) {
+        case gradium::TtsRealtimeMessage::Type::Ready:
+        {
             {
                 std::lock_guard<std::mutex> lk(readyMutex);
                 ready.store(true);
             }
             readyCv.notify_all();
-            return;
-        }
-
-        if (!msg.audio_base64.empty()) {
-            auto bytes = cppcodec::base64_rfc4648::decode(msg.audio_base64);
-            out.write(reinterpret_cast<const char*>(bytes.data()),
-                      static_cast<std::streamsize>(bytes.size()));
-        }
-
-        if (msg.type == "end_of_stream") {
+        } break;
+        case gradium::TtsRealtimeMessage::Type::Audio:
+        {
+            if (!msg.audio_base64.empty()) {
+                auto bytes = cppcodec::base64_rfc4648::decode(msg.audio_base64);
+                out.write(reinterpret_cast<const char*>(bytes.data()),
+                    static_cast<std::streamsize>(bytes.size()));
+            }
+            else {
+                std::cerr << "Warning: received audio message with empty audio_base64\n";
+            }
+        } break;
+        case gradium::TtsRealtimeMessage::Type::EndOfStream:
+        {
             {
                 std::lock_guard<std::mutex> lk(doneMutex);
                 done.store(true);
             }
             doneCv.notify_all();
-        }
-
-        if (msg.type == "error") {
+        } break;
+        case gradium::TtsRealtimeMessage::Type::Error:
+        {
             std::cerr << "TTS error: " << msg.error_message << "\n";
             {
                 std::lock_guard<std::mutex> lk(doneMutex);
                 done.store(true);
             }
             doneCv.notify_all();
-        }
-    });
+        } break;
+        default: {
+            std::cerr << "Received unknown message type: " << msg.type_str << "\n";
+        } break;
+        };
+        });
 
     client.setOnError([&](const std::string& err) {
         std::cerr << "WebSocket error: " << err << "\n";
@@ -88,7 +99,7 @@ int main(int argc, char* argv[])
             done.store(true);
         }
         doneCv.notify_all();
-    });
+        });
 
     client.setOnClosed([&] {
         {
@@ -96,13 +107,13 @@ int main(int argc, char* argv[])
             done.store(true);
         }
         doneCv.notify_all();
-    });
+        });
 
     try {
         client.connect(apiKeyEnv);
 
         gradium::TtsRealtimeSetup setup;
-        setup.voice_id      = voiceId;
+        setup.voice_id = voiceId;
         setup.output_format = outputFormat;
         client.setup(setup);
 
@@ -123,7 +134,8 @@ int main(int argc, char* argv[])
         client.close();
 
         std::cout << "Wrote realtime TTS output to " << outPath << "\n";
-    } catch (const std::exception& ex) {
+    }
+    catch (const std::exception& ex) {
         std::cerr << "TTS realtime failed: " << ex.what() << "\n";
         return 1;
     }

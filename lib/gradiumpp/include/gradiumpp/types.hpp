@@ -100,9 +100,21 @@ struct AsrConfig {
 // WebSocket TTS server messages
 // ---------------------------------------------------------------------------
 
+/**
+ * TTS real-time WebSocket message types.
+ */
+namespace tts::message {
+    constexpr const char* READY = "ready";
+    constexpr const char* AUDIO = "audio";
+    constexpr const char* TEXT  = "text";
+    constexpr const char* END_OF_STREAM = "end_of_stream";
+    constexpr const char* ERROR = "error";
+}
+
 /// Parsed server message received on the TTS real-time WebSocket.
 struct TtsRealtimeMessage {
-    std::string type;           ///< "ready", "audio", "text", "end_of_stream", "error"
+    enum class Type { UNKNOWN, Ready, Audio, Text, EndOfStream, Error } type;
+    std::string type_str;           ///< "ready", "audio", "text", "end_of_stream", "error"
     std::string session_id;     ///< populated on "ready"
     std::string audio_base64;   ///< base64-encoded audio chunk; populated on "audio"
     std::string text;           ///< populated on "text"
@@ -132,9 +144,23 @@ struct TranscriptSegment {
     std::string stream_id;
 };
 
+/**
+ * ASR real-time WebSocket message types.
+ */
+namespace stt::message {
+    constexpr const char* READY = "ready";
+    constexpr const char* STEP  = "step";
+    constexpr const char* TEXT  = "text";
+    constexpr const char* END_TEXT = "end_text";
+    constexpr const char* FLUSHED = "flushed";
+    constexpr const char* END_OF_STREAM = "end_of_stream";
+    constexpr const char* ERROR = "error";
+}
+
 /// Parsed server message received on the ASR real-time WebSocket.
 struct AsrRealtimeMessage {
-    std::string type;           ///< "ready","step","text","end_text","flushed","end_of_stream","error"
+    enum class Type { UNKNOWN, Ready, Step, Text, EndText, Flushed, EndOfStream, Error } type;
+    std::string type_str;           ///< "ready","step","text","end_text","flushed","end_of_stream","error"
     std::string session_id;     ///< on "ready"
     int         sample_rate{0}; ///< on "ready"; expected input sample rate (24 000)
     int         frame_size{0};  ///< on "ready"; expected samples per chunk (1920)
