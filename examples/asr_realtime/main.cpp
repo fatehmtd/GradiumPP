@@ -21,12 +21,12 @@ int main(int argc, char* argv[])
 
     std::string filePath;
     std::string inputFormat = "pcm";
-    bool        showVad     = false;
+    bool        showVad = false;
 
-    CLI::App app{"Transcribe an audio file over the Gradium ASR WebSocket API"};
-    app.add_option("--file",   filePath,    "Path to a raw PCM file (24 kHz, 16-bit, mono)")->required();
+    CLI::App app{ "Transcribe an audio file over the Gradium ASR WebSocket API" };
+    app.add_option("--file", filePath, "Path to a raw PCM file (24 kHz, 16-bit, mono)")->required();
     app.add_option("--format", inputFormat, "Input format");
-    app.add_flag  ("--vad",    showVad,     "Print VAD probabilities");
+    app.add_flag("--vad", showVad, "Print VAD probabilities");
     CLI11_PARSE(app, argc, argv);
 
     std::ifstream audioFile(filePath, std::ios::binary);
@@ -38,40 +38,59 @@ int main(int argc, char* argv[])
         (std::istreambuf_iterator<char>(audioFile)),
         std::istreambuf_iterator<char>());
 
-    std::atomic<bool>       ready{false};
+    std::atomic<bool>       ready{ false };
     std::mutex              readyMutex;
     std::condition_variable readyCv;
 
-    std::atomic<bool>       done{false};
-    std::atomic<bool>       failed{false};
+    std::atomic<bool>       done{ false };
+    std::atomic<bool>       failed{ false };
     std::mutex              doneMutex;
     std::condition_variable doneCv;
 
     gradium::AsrRealtimeClient client;
 
     client.setOnParsedMessage([&](const gradium::AsrRealtimeMessage& msg) {
-        if (msg.type == "ready") {
+        switch (msg.type) {
+        case gradium::AsrRealtimeMessage::Type::Ready:
+        {
             {
                 std::lock_guard<std::mutex> lk(readyMutex);
                 ready.store(true);
             }
             readyCv.notify_all();
-        } else if (msg.type == "text") {
+        }
+        break;
+        case gradium::AsrRealtimeMessage::Type::Text:
+        {
             std::cout << "[partial] " << msg.segment.text << "\n";
-        } else if (msg.type == "end_text") {
+        }
+        break;
+        case gradium::AsrRealtimeMessage::Type::EndText:
+        {
             std::cout << "[final]   " << msg.segment.text
-                      << "  (" << msg.segment.start_s << "s – " << msg.segment.stop_s << "s)\n";
-        } else if (msg.type == "step" && showVad) {
-            std::cout << "[vad]     0.5s=" << msg.vad.inactivity_prob_0_5s
-                      << "  1.0s=" << msg.vad.inactivity_prob_1_0s
-                      << "  2.0s=" << msg.vad.inactivity_prob_2_0s << "\n";
-        } else if (msg.type == "end_of_stream") {
+                << "  (" << msg.segment.start_s << "s – " << msg.segment.stop_s << "s)\n";
+        }
+        break;
+        case gradium::AsrRealtimeMessage::Type::Step:
+        {
+            if (showVad) {
+                std::cout << "[vad]     0.5s=" << msg.vad.inactivity_prob_0_5s
+                    << "  1.0s=" << msg.vad.inactivity_prob_1_0s
+                    << "  2.0s=" << msg.vad.inactivity_prob_2_0s << "\n";
+            }
+        }
+        break;
+        case gradium::AsrRealtimeMessage::Type::EndOfStream:
+        {
             {
                 std::lock_guard<std::mutex> lk(doneMutex);
                 done.store(true);
             }
             doneCv.notify_all();
-        } else if (msg.type == "error") {
+        }
+        break;
+        case gradium::AsrRealtimeMessage::Type::Error:
+        {
             std::cerr << "ASR error: " << msg.error_message << "\n";
             {
                 std::lock_guard<std::mutex> lk(doneMutex);
@@ -80,7 +99,9 @@ int main(int argc, char* argv[])
             }
             doneCv.notify_all();
         }
-    });
+        break;
+        }
+        });
 
     client.setOnError([&](const std::string& err) {
         std::cerr << "WebSocket error: " << err << "\n";
@@ -90,7 +111,7 @@ int main(int argc, char* argv[])
             done.store(true);
         }
         doneCv.notify_all();
-    });
+        });
 
     client.setOnClosed([&] {
         {
@@ -101,7 +122,7 @@ int main(int argc, char* argv[])
             }
         }
         doneCv.notify_all();
-    });
+        });
 
     try {
         gradium::AsrRealtimeSetup setup;
@@ -122,7 +143,7 @@ int main(int argc, char* argv[])
         while (offset < audioData.size()) {
             const std::size_t end = std::min(offset + chunkSize, audioData.size());
             const std::vector<std::uint8_t> chunk(audioData.begin() + offset,
-                                                   audioData.begin() + end);
+                audioData.begin() + end);
             client.sendAudio(chunk);
             offset = end;
         }
@@ -141,7 +162,8 @@ int main(int argc, char* argv[])
         }
 
         std::cout << "\nTranscription complete.\n";
-    } catch (const std::exception& ex) {
+    }
+    catch (const std::exception& ex) {
         std::cerr << "ASR realtime failed: " << ex.what() << "\n";
         return 1;
     }

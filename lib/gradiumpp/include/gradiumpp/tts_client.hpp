@@ -73,10 +73,10 @@ public:
     void setup(const TtsRealtimeSetup& cfg);
 
     /// Sends {"type":"text","text":"..."}. Call after receiving "ready".
-    void sendText(const std::string& text, const std::string& client_req_id = "");
+    void sendText(const std::string& text, const std::string& client_req_id = "") const;
 
     /// Sends {"type":"end_of_stream"}. Server echoes it back then closes (if close_ws_on_eos).
-    void sendEndOfStream(const std::string& client_req_id = "");
+    void sendEndOfStream(const std::string& client_req_id = "") const;
 
     void close();
 

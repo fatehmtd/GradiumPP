@@ -77,13 +77,15 @@ public:
 
     /* Send a raw PCM audio chunk. The library encodes it to base64 internally.
        Recommended chunk size: 1920 samples × 2 bytes = 3840 bytes (80 ms at 24 kHz). */
-    void sendAudio(const std::vector<std::uint8_t>& pcm_chunk);
+    void sendAudio(const std::vector<std::uint8_t>& pcm_chunk) const;
+
+    void sendAudio(const std::uint8_t* pcm_samples, std::size_t sample_count) const;
 
     /// Sends {"type":"flush","flush_id":"..."}. Server responds with {"type":"flushed"}.
-    void sendFlush(const std::string& flush_id);
+    void sendFlush(const std::string& flush_id) const;
 
     /// Sends {"type":"end_of_stream"}.
-    void sendEndOfStream();
+    void sendEndOfStream() const;
 
     void close();
 

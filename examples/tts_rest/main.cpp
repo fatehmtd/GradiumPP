@@ -16,8 +16,8 @@ int main(int argc, char* argv[])
 
     std::string text = "This is a sample request for the Gradium TTS REST client.";
     std::string voiceId = gradium::voices::en::american::abigail;
-    std::string outputFormat = "wav";
-    std::string outPath      = "tts_output.wav";
+    std::string outputFormat = "pcm_16000";
+    std::string outPath      = "tts_output.pcm";
 
     CLI::App app{"Generate speech with the Gradium TTS REST API"};
     app.add_option("--text",   text,         "Text to synthesize");
