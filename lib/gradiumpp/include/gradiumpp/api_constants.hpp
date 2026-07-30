@@ -19,19 +19,21 @@ constexpr const char* default_model = "default";
 } // namespace models
 
 /* Default sample rate is 48 000 Hz for wav/pcm/opus.
-   Telephony variants (ulaw_8000, alaw_8000) are fixed at 8 000 Hz.
+   Telephony variants (ulaw_8000, mulaw_8000, alaw_8000) are fixed at 8 000 Hz.
    The pcm_* variants fix the sample rate to the value in their name. */
 namespace output_formats {
 
-constexpr const char* wav      = "wav";
-constexpr const char* pcm      = "pcm";
-constexpr const char* opus     = "opus";
-constexpr const char* ulaw_8000 = "ulaw_8000";
-constexpr const char* alaw_8000 = "alaw_8000";
+constexpr const char* wav       = "wav";
+constexpr const char* pcm       = "pcm";
+constexpr const char* opus      = "opus";
+constexpr const char* ulaw_8000  = "ulaw_8000";
+constexpr const char* mulaw_8000 = "mulaw_8000";
+constexpr const char* alaw_8000  = "alaw_8000";
 constexpr const char* pcm_8000  = "pcm_8000";
 constexpr const char* pcm_16000 = "pcm_16000";
+constexpr const char* pcm_22050 = "pcm_22050";
 constexpr const char* pcm_24000 = "pcm_24000";
-constexpr const char* pcm_32000 = "pcm_32000";
+constexpr const char* pcm_44100 = "pcm_44100";
 constexpr const char* pcm_48000 = "pcm_48000";
 
 } // namespace output_formats
@@ -56,14 +58,18 @@ constexpr const char* default_model = "default";
 } // namespace models
 
 /* Default input format is pcm (24 kHz, 16-bit signed little-endian mono).
-   Expected frame size for real-time is 1920 samples (80 ms). */
+   Expected frame size for real-time is 1920 samples (80 ms).
+   Note: the REST endpoint (POST /post/speech/asr) only accepts "wav", "pcm",
+   and "opus" for its input_format query parameter; the other formats below
+   are only valid on the real-time WebSocket setup message. */
 namespace input_formats {
 
 constexpr const char* pcm      = "pcm";
 constexpr const char* pcm_8000  = "pcm_8000";
 constexpr const char* pcm_16000 = "pcm_16000";
+constexpr const char* pcm_22050 = "pcm_22050";
 constexpr const char* pcm_24000 = "pcm_24000";
-constexpr const char* pcm_32000 = "pcm_32000";
+constexpr const char* pcm_44100 = "pcm_44100";
 constexpr const char* pcm_48000 = "pcm_48000";
 constexpr const char* wav       = "wav";
 constexpr const char* opus      = "opus";

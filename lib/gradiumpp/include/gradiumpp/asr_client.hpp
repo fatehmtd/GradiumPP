@@ -50,6 +50,8 @@ struct AsrRealtimeSetup {
     std::string model_name{asr::models::default_model};
     std::string client_req_id;        ///< optional; required for multiplexing
     bool        close_ws_on_eos{true};
+    double      retry_for_s{0.0};     ///< optional setup retry window for transient worker allocation failures; 0 = unset
+    AsrJsonConfig json_config;        ///< advanced settings: temp, language, target_language, padding_bonus, delay_in_frames, keywords
 };
 
 /* Event-driven WebSocket client for Gradium real-time ASR.
@@ -81,8 +83,8 @@ public:
 
     void sendAudio(const std::uint8_t* pcm_samples, std::size_t sample_count) const;
 
-    /// Sends {"type":"flush","flush_id":"..."}. Server responds with {"type":"flushed"}.
-    void sendFlush(const std::string& flush_id) const;
+    /// Sends {"type":"flush","flush_id":N}. Server responds with {"type":"flushed","flush_id":N}.
+    void sendFlush(int flush_id) const;
 
     /// Sends {"type":"end_of_stream"}.
     void sendEndOfStream() const;

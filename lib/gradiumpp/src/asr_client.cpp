@@ -23,9 +23,33 @@ namespace gradium {
 
         std::string audioContentType(const std::string& input_format)
         {
+            // Matches the requestBody content types accepted by POST /post/speech/asr:
+            // audio/wav, audio/pcm, audio/ogg (Ogg-wrapped Opus — not "audio/opus").
             if (input_format == "wav")  return "audio/wav";
-            if (input_format == "opus") return "audio/opus";
+            if (input_format == "opus") return "audio/ogg";
             return "audio/pcm";
+        }
+
+        json buildAsrJsonConfig(const AsrJsonConfig& jc)
+        {
+            json jconfig;
+            if (jc.temp != 0.0)
+                jconfig["temp"] = jc.temp;
+            if (!jc.language.empty())
+                jconfig["language"] = jc.language;
+            if (!jc.target_language.empty())
+                jconfig["target_language"] = jc.target_language;
+            if (jc.padding_bonus != 0.0)
+                jconfig["padding_bonus"] = jc.padding_bonus;
+            if (jc.delay_in_frames != 0)
+                jconfig["delay_in_frames"] = jc.delay_in_frames;
+            if (!jc.keywords.words.empty()) {
+                jconfig["keywords"] = {
+                    {"words", jc.keywords.words},
+                    {"boost", jc.keywords.boost},
+                };
+            }
+            return jconfig;
         }
 
         std::string urlEncode(const std::string& value)
@@ -67,15 +91,18 @@ namespace gradium {
             else if (msg.type_str == "error") msg.type = AsrRealtimeMessage::Type::Error;
             else msg.type = AsrRealtimeMessage::Type::UNKNOWN;
 
-            msg.session_id = detail::stringOrEmpty(payload, "session_id");
-            msg.flush_id = detail::stringOrEmpty(payload, "flush_id");
+            msg.request_id = detail::stringOrEmpty(payload, "request_id");
+            msg.flush_id = payload.value("flush_id", 0);
             msg.client_req_id = detail::stringOrEmpty(payload, "client_req_id");
             msg.error_message = detail::stringOrEmpty(payload, "message");
+            msg.error_code = payload.value("code", 0);
 
             if (payload.contains("sample_rate") && payload["sample_rate"].is_number())
                 msg.sample_rate = payload["sample_rate"].get<int>();
             if (payload.contains("frame_size") && payload["frame_size"].is_number())
                 msg.frame_size = payload["frame_size"].get<int>();
+            if (payload.contains("delay_in_frames") && payload["delay_in_frames"].is_number())
+                msg.delay_in_frames = payload["delay_in_frames"].get<int>();
 
             if (payload.contains("vad") && payload["vad"].is_array()) {
                 for (const auto& item : payload["vad"]) {
@@ -119,19 +146,11 @@ namespace gradium {
 
     std::string AsrRestClient::buildQueryString(const AsrConfig& config) const
     {
+        // Query param is "model", not "model_name" — matches POST /post/speech/asr exactly.
         std::string qs = "?input_format=" + urlEncode(config.input_format)
-            + "&model_name=" + urlEncode(config.model_name);
+            + "&model=" + urlEncode(config.model_name);
 
-        json jconfig;
-        if (config.json_config.temp != 0.0)
-            jconfig["temp"] = config.json_config.temp;
-        if (!config.json_config.language.empty())
-            jconfig["language"] = config.json_config.language;
-        if (config.json_config.padding_bonus != 0.0)
-            jconfig["padding_bonus"] = config.json_config.padding_bonus;
-        if (config.json_config.delay_in_frames != 0)
-            jconfig["delay_in_frames"] = config.json_config.delay_in_frames;
-
+        const json jconfig = buildAsrJsonConfig(config.json_config);
         if (!jconfig.empty()) {
             qs += "&json_config=" + urlEncode(jconfig.dump());
         }
@@ -230,6 +249,12 @@ namespace gradium {
             payload["client_req_id"] = setup.client_req_id;
         if (!setup.close_ws_on_eos)
             payload["close_ws_on_eos"] = false;
+        if (setup.retry_for_s != 0.0)
+            payload["retry_for_s"] = setup.retry_for_s;
+
+        const json jconfig = buildAsrJsonConfig(setup.json_config);
+        if (!jconfig.empty())
+            payload["json_config"] = jconfig;
 
         _wsTransport->sendText(payload.dump());
     }
@@ -248,7 +273,7 @@ namespace gradium {
         _wsTransport->sendText(payload.dump());
     }
 
-    void AsrRealtimeClient::sendFlush(const std::string& flush_id) const
+    void AsrRealtimeClient::sendFlush(int flush_id) const
     {
         json payload;
         payload["type"] = "flush";

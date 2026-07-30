@@ -45,6 +45,8 @@ struct TtsRealtimeSetup {
     std::string output_format{tts::output_formats::wav};
     std::string client_req_id;       ///< optional; required for multiplexing
     bool        close_ws_on_eos{true}; ///< set false to keep connection open for next request
+    double      retry_for_s{0.0};      ///< optional setup retry window for transient worker allocation failures; 0 = unset
+    TtsJsonConfig json_config;         ///< advanced settings: temp, cfg_coef, padding_bonus, rewrite_rules, pronunciation_id
 };
 
 /* Event-driven WebSocket client for Gradium real-time TTS.

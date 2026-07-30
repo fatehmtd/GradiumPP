@@ -63,31 +63,39 @@ struct CreditsSummary {
 // TTS configuration
 // ---------------------------------------------------------------------------
 
+/// Advanced TTS settings; real-time WebSocket only, not accepted by the REST endpoint.
 struct TtsJsonConfig {
-    double      temp{0.0};          ///< 0.0 = use server default (0.7)
-    double      cfg_coef{0.0};      ///< 0.0 = use server default (2.0)
-    double      padding_bonus{0.0}; ///< negative = faster, positive = slower
+    double      temp{0.0};          ///< 0.0 = use server default (0.7); range 0.0-1.4
+    double      cfg_coef{0.0};      ///< 0.0 = use server default (2.0); range 1.0-4.0 (voice similarity)
+    double      padding_bonus{0.0}; ///< negative = faster, positive = slower; range -4.0-4.0
     std::vector<std::string> rewrite_rules; ///< language codes e.g. {"en"}
     std::string pronunciation_id;   ///< optional pronunciation dictionary UID
 };
 
+/// Body for POST /post/speech/tts — text, voice_id, output_format, only_audio only.
 struct TtsConfig {
-    std::string   voice_id;
-    std::string   model_name{tts::models::default_model};
-    std::string   output_format{tts::output_formats::wav};
-    bool          only_audio{true};
-    TtsJsonConfig json_config;
+    std::string voice_id;
+    std::string output_format{tts::output_formats::wav};
+    bool        only_audio{true};
 };
 
 // ---------------------------------------------------------------------------
 // ASR configuration
 // ---------------------------------------------------------------------------
 
+/// Bias transcription toward a custom vocabulary (up to 500 keywords).
+struct AsrKeywordBoost {
+    std::vector<std::string> words;
+    double boost{3.0}; ///< log-space bias, range -6.0 to 6.0; 3.0 is the recommended default
+};
+
 struct AsrJsonConfig {
-    double      temp{0.0};
-    std::string language;           ///< hint: "en", "fr", "de", "es", "pt"
-    double      padding_bonus{0.0};
-    int         delay_in_frames{0}; ///< 0 = server default; values: 7,8,10,12,...
+    double      temp{0.0};            ///< 0.0-1.5; 0.0 is greedy decoding
+    std::string language;             ///< hint: "en", "fr", "de", "es", "pt"
+    std::string target_language;      ///< output language for translating models only
+    double      padding_bonus{0.0};   ///< -4.0-4.0; biases emission timing sooner/later
+    int         delay_in_frames{0};   ///< 0 = server default; valid range 0-80
+    AsrKeywordBoost keywords;         ///< empty words = no keyword boosting sent
 };
 
 struct AsrConfig {
@@ -115,13 +123,17 @@ namespace tts::message {
 struct TtsRealtimeMessage {
     enum class Type { UNKNOWN, Ready, Audio, Text, EndOfStream, Error } type;
     std::string type_str;           ///< "ready", "audio", "text", "end_of_stream", "error"
-    std::string session_id;     ///< populated on "ready"
+    std::string request_id;     ///< populated on "ready"
+    int         sample_rate{0}; ///< on "ready"; output sample rate (48 000 by default)
+    int         frame_size{0};  ///< on "ready"; output samples per chunk
     std::string audio_base64;   ///< base64-encoded audio chunk; populated on "audio"
     std::string text;           ///< populated on "text"
     double      start_s{0.0};   ///< populated on "text"
+    double      stop_s{0.0};    ///< populated on "text"
     std::string stream_id;
     std::string client_req_id;  ///< echoed from sent messages (multiplexing)
     std::string error_message;  ///< populated on "error"
+    int         error_code{0};  ///< populated on "error", e.g. 1008, 1011
     std::string raw_message;
 };
 
@@ -161,14 +173,16 @@ namespace stt::message {
 struct AsrRealtimeMessage {
     enum class Type { UNKNOWN, Ready, Step, Text, EndText, Flushed, EndOfStream, Error } type;
     std::string type_str;           ///< "ready","step","text","end_text","flushed","end_of_stream","error"
-    std::string session_id;     ///< on "ready"
+    std::string request_id;     ///< on "ready"
     int         sample_rate{0}; ///< on "ready"; expected input sample rate (24 000)
     int         frame_size{0};  ///< on "ready"; expected samples per chunk (1920)
+    int         delay_in_frames{0}; ///< on "ready"; active adaptive-delay setting
     VadStep     vad;            ///< on "step"
     TranscriptSegment segment;  ///< on "text" and "end_text"
-    std::string flush_id;       ///< on "flushed"
+    int         flush_id{0};    ///< on "flushed"; echoes the client's flush_id
     std::string client_req_id;  ///< echoed from sent messages (multiplexing)
     std::string error_message;  ///< on "error"
+    int         error_code{0};  ///< on "error", e.g. 1002, 1008, 1011
     std::string raw_message;
 };
 

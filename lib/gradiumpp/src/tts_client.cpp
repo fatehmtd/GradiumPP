@@ -36,13 +36,17 @@ TtsRealtimeMessage parseTtsMessage(const std::string& raw)
     else if (msg.type_str == "error") msg.type = TtsRealtimeMessage::Type::Error;
     else msg.type = TtsRealtimeMessage::Type::UNKNOWN;
 
-    msg.session_id     = detail::stringOrEmpty(payload, "session_id");
+    msg.request_id     = detail::stringOrEmpty(payload, "request_id");
     msg.audio_base64   = detail::stringOrEmpty(payload, "audio");
     msg.text           = detail::stringOrEmpty(payload, "text");
     msg.stream_id      = detail::stringOrEmpty(payload, "stream_id");
     msg.client_req_id  = detail::stringOrEmpty(payload, "client_req_id");
     msg.error_message  = detail::stringOrEmpty(payload, "message");
     msg.start_s        = payload.value("start_s", 0.0);
+    msg.stop_s         = payload.value("stop_s", 0.0);
+    msg.sample_rate    = payload.value("sample_rate", 0);
+    msg.frame_size     = payload.value("frame_size", 0);
+    msg.error_code     = payload.value("code", 0);
 
     return msg;
 }
@@ -69,23 +73,12 @@ TtsRestClient::TtsRestClient(
 transport::HttpResponse TtsRestClient::generateSpeech(const TtsConfig& config,
                                                         const std::string& text)
 {
+    // model_name/json_config are WebSocket-only; the REST endpoint rejects them.
     json body;
     body["text"]          = text;
     body["voice_id"]      = config.voice_id;
     body["output_format"] = config.output_format;
     body["only_audio"]    = config.only_audio;
-    body["model_name"]    = config.model_name;
-
-    json jconfig;
-    if (config.json_config.temp != 0.0)          jconfig["temp"]          = config.json_config.temp;
-    if (config.json_config.cfg_coef != 0.0)      jconfig["cfg_coef"]      = config.json_config.cfg_coef;
-    if (config.json_config.padding_bonus != 0.0) jconfig["padding_bonus"] = config.json_config.padding_bonus;
-    if (!config.json_config.pronunciation_id.empty())
-        jconfig["pronunciation_id"] = config.json_config.pronunciation_id;
-    if (!config.json_config.rewrite_rules.empty())
-        jconfig["rewrite_rules"] = config.json_config.rewrite_rules;
-    if (!jconfig.is_null() && !jconfig.empty())
-        body["json_config"] = jconfig;
 
     transport::HttpRequest req;
     req.method       = transport::HttpMethod::Post;
@@ -180,6 +173,20 @@ void TtsRealtimeClient::setup(const TtsRealtimeSetup& cfg)
         payload["client_req_id"] = cfg.client_req_id;
     if (!cfg.close_ws_on_eos)
         payload["close_ws_on_eos"] = false;
+    if (cfg.retry_for_s != 0.0)
+        payload["retry_for_s"] = cfg.retry_for_s;
+
+    const auto& jc = cfg.json_config;
+    json jconfig;
+    if (jc.temp != 0.0)          jconfig["temp"]          = jc.temp;
+    if (jc.cfg_coef != 0.0)      jconfig["cfg_coef"]      = jc.cfg_coef;
+    if (jc.padding_bonus != 0.0) jconfig["padding_bonus"] = jc.padding_bonus;
+    if (!jc.pronunciation_id.empty())
+        jconfig["pronunciation_id"] = jc.pronunciation_id;
+    if (!jc.rewrite_rules.empty())
+        jconfig["rewrite_rules"] = jc.rewrite_rules;
+    if (!jconfig.empty())
+        payload["json_config"] = jconfig;
 
     _wsTransport->sendText(payload.dump());
 }
