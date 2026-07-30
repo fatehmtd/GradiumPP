@@ -88,6 +88,28 @@ constexpr const char* realtime = "wss://api.gradium.ai/api/speech/asr";
 
 } // namespace gradium::asr
 
+// ── S2S ───────────────────────────────────────────────────────────────────────
+
+namespace gradium::s2s {
+
+namespace models {
+
+// "s2s-translate" is the only model currently supported by the S2S endpoint;
+// it always requires json_config.target_language on setup (see S2sRealtimeSetup).
+constexpr const char* default_model     = "s2s-translate";
+constexpr const char* default_stt_model = "stt-translate";
+constexpr const char* default_tts_model = "default";
+
+} // namespace models
+
+namespace endpoints {
+
+constexpr const char* realtime = "wss://api.gradium.ai/api/speech/s2s";
+
+} // namespace endpoints
+
+} // namespace gradium::s2s
+
 // ── Voices ────────────────────────────────────────────────────────────────────
 
 namespace gradium::voices::endpoints {

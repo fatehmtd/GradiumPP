@@ -17,6 +17,7 @@ endif()
 add_library(gradiumpp STATIC
     src/tts_client.cpp
     src/asr_client.cpp
+    src/s2s_client.cpp
     src/voice_client.cpp
     src/pronunciation_client.cpp
     src/credits_client.cpp

@@ -199,6 +199,53 @@ struct AsrRealtimeMessage {
 };
 
 // ---------------------------------------------------------------------------
+// S2S configuration
+// ---------------------------------------------------------------------------
+
+struct S2sConfig {
+    std::string input_format{asr::input_formats::wav};
+    std::string output_format{tts::output_formats::wav};
+    std::string model_name{s2s::models::default_model};
+    std::string stt_model_name;      ///< optional override for the transcription model
+    std::string tts_model_name;      ///< optional override for the synthesis model
+    std::string voice_id;            ///< voice used for the synthesized output
+    std::string target_language;     ///< optional; translates speech when set
+};
+
+// ---------------------------------------------------------------------------
+// WebSocket S2S server messages
+// ---------------------------------------------------------------------------
+
+/**
+ * S2S real-time WebSocket message types.
+ */
+namespace s2s::message {
+    constexpr const char* READY = "ready";
+    constexpr const char* AUDIO = "audio";
+    constexpr const char* TEXT  = "text";
+    constexpr const char* END_OF_STREAM = "end_of_stream";
+    constexpr const char* ERROR = "error";
+}
+
+/// Parsed server message received on the S2S real-time WebSocket.
+struct S2sRealtimeMessage {
+    enum class Type { UNKNOWN, Ready, Audio, Text, EndOfStream, Error } type;
+    std::string type_str;           ///< "ready", "audio", "text", "end_of_stream", "error"
+    std::string request_id;     ///< populated on "ready"
+    int         sample_rate{0}; ///< on "ready"; output sample rate (48 000 by default)
+    int         frame_size{0};  ///< on "ready"; output samples per chunk
+    std::string audio_base64;   ///< base64-encoded audio chunk; populated on "audio"
+    std::string text;           ///< transcribed (and translated) text; populated on "text"
+    double      start_s{0.0};   ///< populated on "text" and "audio"
+    double      stop_s{0.0};    ///< populated on "text" and "audio"
+    std::string stream_id;
+    std::string client_req_id;  ///< echoed from sent messages (multiplexing)
+    std::string error_message;  ///< populated on "error"
+    int         error_code{0};  ///< populated on "error", e.g. 1008, 1011
+    std::string raw_message;
+};
+
+// ---------------------------------------------------------------------------
 // Error / Exception
 // ---------------------------------------------------------------------------
 

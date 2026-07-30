@@ -5,6 +5,7 @@
 #include "types.hpp"
 #include "tts_client.hpp"
 #include "asr_client.hpp"
+#include "s2s_client.hpp"
 #include "voice_client.hpp"
 #include "pronunciation_client.hpp"
 #include "credits_client.hpp"
