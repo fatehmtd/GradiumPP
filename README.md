@@ -4,7 +4,7 @@ A C++17 client library for the [Gradium](https://docs.gradium.ai) Text-to-Speech
 
 ## Features
 
-- REST and WebSocket clients for TTS and ASR
+- REST and WebSocket clients for TTS and ASR, plus a WebSocket client for S2S (speech-to-speech)
 - Voice, pronunciation dictionary, and credits endpoints
 - Replaceable HTTP and WebSocket transports for testing or custom integration
 - Windows support through WinHTTP and Unix-like platforms through libwebsockets
@@ -42,7 +42,7 @@ int main()
     gradium::TtsRestClient client("gd_your_api_key_here");
 
     gradium::TtsConfig config;
-    config.voice_id      = gradium::voices::en::american::abigail;
+    config.voice_id      = gradium::voices::en::american::zoey;
     config.output_format = gradium::tts::output_formats::wav;
     config.only_audio    = true;
 
@@ -83,15 +83,17 @@ gradium::TtsRestClient client("api-key", myHttp);
 
 Common API strings are exposed as `constexpr const char*` values in named namespaces. That keeps call sites readable and avoids scattering endpoint or format strings through application code.
 
-Voice IDs are available in `voice_constants.hpp`:
+Voice IDs are available in `voice_constants.hpp`, generated from Gradium's current
+[flagship voice list](https://docs.gradium.ai/guides/voices/flagship-voices) (66 voices
+across five languages). It is not the full catalog — call
+`voiceClient.listVoicesTyped(true)` to enumerate every catalog voice available to your
+account, including non-flagship ones.
 
 ```cpp
-config.voice_id = gradium::voices::en::american::emma;
-config.voice_id = gradium::voices::fr::french::elise;
-config.voice_id = gradium::voices::de::mia;
+config.voice_id = gradium::voices::en::american::zoey;
+config.voice_id = gradium::voices::fr::french::romane;
+config.voice_id = gradium::voices::de::germany::svenja;
 ```
-
-Duplicate names within the same dialect use a `_2` suffix when needed.
 
 TTS formats and models:
 
@@ -100,11 +102,13 @@ gradium::tts::output_formats::wav        // default — 48 kHz
 gradium::tts::output_formats::pcm
 gradium::tts::output_formats::opus
 gradium::tts::output_formats::ulaw_8000
+gradium::tts::output_formats::mulaw_8000
 gradium::tts::output_formats::alaw_8000
 gradium::tts::output_formats::pcm_8000
 gradium::tts::output_formats::pcm_16000
+gradium::tts::output_formats::pcm_22050
 gradium::tts::output_formats::pcm_24000
-gradium::tts::output_formats::pcm_32000
+gradium::tts::output_formats::pcm_44100
 gradium::tts::output_formats::pcm_48000
 gradium::tts::models::default_model
 ```
@@ -120,11 +124,15 @@ gradium::asr::input_formats::mulaw_8000
 gradium::asr::input_formats::alaw_8000
 gradium::asr::input_formats::pcm_8000
 gradium::asr::input_formats::pcm_16000
+gradium::asr::input_formats::pcm_22050
 gradium::asr::input_formats::pcm_24000
-gradium::asr::input_formats::pcm_32000
+gradium::asr::input_formats::pcm_44100
 gradium::asr::input_formats::pcm_48000
 gradium::asr::models::default_model
 ```
+
+`POST /post/speech/asr` (the REST endpoint) only accepts `wav`, `pcm`, and `opus` for
+its `input_format` query parameter — the other formats above are WebSocket-only.
 
 ## Environment Variable
 
@@ -140,9 +148,10 @@ export GRADIUM_API_KEY=gd_your_api_key_here
 |---------|-------------|
 | `gradium_tts_rest` | REST TTS → write audio file |
 | `gradium_tts_realtime` | WebSocket TTS with ready/audio/end_of_stream flow |
-| `gradium_tts_multiplex` | Three concurrent streams on one WebSocket |
+| `gradium_tts_multiplex` | Two concurrent streams on one WebSocket |
 | `gradium_asr_rest` | REST ASR → print NDJSON transcript |
 | `gradium_asr_realtime` | WebSocket ASR with live transcript + optional VAD output |
+| `gradium_s2s_realtime` | WebSocket S2S: stream audio in, get transcript + re-synthesized audio out |
 | `gradium_voices` | List voices, create/update/delete custom voice, check credits |
 
 ## Transport Architecture
