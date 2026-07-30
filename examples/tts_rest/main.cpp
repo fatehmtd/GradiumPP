@@ -15,7 +15,7 @@ int main(int argc, char* argv[])
     }
 
     std::string text = "This is a sample request for the Gradium TTS REST client.";
-    std::string voiceId = gradium::voices::en::american::abigail;
+    std::string voiceId = gradium::voices::en::american::zoey;
     std::string outputFormat = "pcm_16000";
     std::string outPath      = "tts_output.pcm";
 
