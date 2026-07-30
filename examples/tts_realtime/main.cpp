@@ -36,6 +36,7 @@ int main(int argc, char* argv[])
     std::condition_variable readyCv;
 
     std::atomic<bool>       done{ false };
+    std::atomic<bool>       failed{ false };
     std::mutex              doneMutex;
     std::condition_variable doneCv;
 
@@ -57,6 +58,7 @@ int main(int argc, char* argv[])
                 ready.store(true);
             }
             readyCv.notify_all();
+            std::cout << "TTS session is ready. Request ID: " << msg.request_id << " Raw message: " << msg.raw_message << "\n";
         } break;
         case gradium::TtsRealtimeMessage::Type::Audio:
         {
@@ -79,12 +81,15 @@ int main(int argc, char* argv[])
         } break;
         case gradium::TtsRealtimeMessage::Type::Error:
         {
+            // Wake the ready-wait too — an error can arrive before "ready".
             std::cerr << "TTS error: " << msg.error_message << "\n";
             {
                 std::lock_guard<std::mutex> lk(doneMutex);
+                failed.store(true);
                 done.store(true);
             }
             doneCv.notify_all();
+            readyCv.notify_all();
         } break;
         default: {
             std::cerr << "Received unknown message type: " << msg.type_str << "\n";
@@ -96,17 +101,23 @@ int main(int argc, char* argv[])
         std::cerr << "WebSocket error: " << err << "\n";
         {
             std::lock_guard<std::mutex> lk(doneMutex);
+            failed.store(true);
             done.store(true);
         }
         doneCv.notify_all();
+        readyCv.notify_all();
         });
 
     client.setOnClosed([&] {
         {
             std::lock_guard<std::mutex> lk(doneMutex);
+            if (!done.load()) {
+                failed.store(true);
+            }
             done.store(true);
         }
         doneCv.notify_all();
+        readyCv.notify_all();
         });
 
     try {
@@ -119,7 +130,11 @@ int main(int argc, char* argv[])
 
         {
             std::unique_lock<std::mutex> lk(readyMutex);
-            readyCv.wait(lk, [&] { return ready.load(); });
+            readyCv.wait(lk, [&] { return ready.load() || failed.load(); });
+        }
+
+        if (failed.load()) {
+            throw std::runtime_error("[gradiumpp] TTS session ended before ready");
         }
 
         client.sendText(text);
@@ -132,6 +147,11 @@ int main(int argc, char* argv[])
 
         out.close();
         client.close();
+
+        if (failed.load()) {
+            std::cerr << "\nTTS realtime session did not complete successfully.\n";
+            return 1;
+        }
 
         std::cout << "Wrote realtime TTS output to " << outPath << "\n";
     }

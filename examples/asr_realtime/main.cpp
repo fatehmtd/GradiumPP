@@ -58,6 +58,7 @@ int main(int argc, char* argv[])
                 ready.store(true);
             }
             readyCv.notify_all();
+            std::cout << "ASR session is ready. Request ID: " << msg.request_id << " Raw message: " << msg.raw_message << "\n";
         }
         break;
         case gradium::AsrRealtimeMessage::Type::Text:
@@ -91,6 +92,7 @@ int main(int argc, char* argv[])
         break;
         case gradium::AsrRealtimeMessage::Type::Error:
         {
+            // Wake the ready-wait too — an error can arrive before "ready".
             std::cerr << "ASR error: " << msg.error_message << "\n";
             {
                 std::lock_guard<std::mutex> lk(doneMutex);
@@ -98,6 +100,7 @@ int main(int argc, char* argv[])
                 done.store(true);
             }
             doneCv.notify_all();
+            readyCv.notify_all();
         }
         break;
         }
@@ -111,6 +114,7 @@ int main(int argc, char* argv[])
             done.store(true);
         }
         doneCv.notify_all();
+        readyCv.notify_all();
         });
 
     client.setOnClosed([&] {
@@ -122,6 +126,7 @@ int main(int argc, char* argv[])
             }
         }
         doneCv.notify_all();
+        readyCv.notify_all();
         });
 
     try {

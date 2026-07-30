@@ -21,20 +21,19 @@ int main(int argc, char* argv[])
     }
 
     std::string voiceId;
-    CLI::App app{ "Run three TTS streams over one WebSocket connection" };
+    CLI::App app{ "Run two TTS streams over one WebSocket connection" };
     app.add_option("--voice", voiceId, "Voice ID for all streams")->required();
     CLI11_PARSE(app, argc, argv);
 
-    const std::vector<std::string> reqIds = { "req-1", "req-2", "req-3" };
+    // Two streams, not three: most plans cap concurrent realtime sessions at 2.
+    const std::vector<std::string> reqIds = { "req-1", "req-2" };
     const std::vector<std::string> texts = {
         "This is the first stream.",
-        "This is the second stream.",
-        "This is the third stream."
+        "This is the second stream."
     };
     const std::vector<std::string> outPaths = {
         "tts_multiplex_1.wav",
-        "tts_multiplex_2.wav",
-        "tts_multiplex_3.wav"
+        "tts_multiplex_2.wav"
     };
 
     std::map<std::string, std::ofstream> outputs;
@@ -47,6 +46,7 @@ int main(int argc, char* argv[])
     }
 
     std::atomic<int>        finished{ 0 };
+    std::atomic<bool>       failed{ false };
     std::mutex              doneMutex;
     std::condition_variable doneCv;
     const int               totalStreams = static_cast<int>(reqIds.size());
@@ -78,7 +78,16 @@ int main(int argc, char* argv[])
             }
         } break;
         case gradium::TtsRealtimeMessage::Type::Error: {
+            // An error is terminal for that stream; count it or the wait below hangs.
             std::cerr << "[" << id << "] TTS error: " << msg.error_message << "\n";
+            failed.store(true);
+            if (outputs.count(id)) {
+                outputs[id].close();
+            }
+            if (finished.fetch_add(1) + 1 == totalStreams) {
+                std::lock_guard<std::mutex> lk(doneMutex);
+                doneCv.notify_all();
+            }
         } break;
         default: {
             std::cerr << "Received unknown message type: " << msg.type_str << "\n";
@@ -86,8 +95,11 @@ int main(int argc, char* argv[])
         }
         });
 
+    std::atomic<bool> aborted{ false };
     client.setOnError([&](const std::string& err) {
         std::cerr << "WebSocket error: " << err << "\n";
+        failed.store(true);
+        aborted.store(true);
         std::lock_guard<std::mutex> lk(doneMutex);
         doneCv.notify_all();
         });
@@ -111,10 +123,15 @@ int main(int argc, char* argv[])
 
         {
             std::unique_lock<std::mutex> lk(doneMutex);
-            doneCv.wait(lk, [&] { return finished.load() == totalStreams; });
+            doneCv.wait(lk, [&] { return finished.load() == totalStreams || aborted.load(); });
         }
 
         client.close();
+
+        if (failed.load()) {
+            std::cerr << "\nOne or more multiplexed streams did not complete successfully.\n";
+            return 1;
+        }
 
         for (std::size_t i = 0; i < reqIds.size(); ++i) {
             std::cout << "Wrote multiplex stream " << reqIds[i] << " to " << outPaths[i] << "\n";
