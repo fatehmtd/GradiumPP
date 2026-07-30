@@ -14,7 +14,7 @@
 #   --build               Run cmake configure + build before the examples.
 #   --build-dir DIR       Path to the CMake build directory (default: build).
 #   --voice ID            Voice ID used for TTS examples
-#                         (default: KRo-uwfno-KcEgBM / voices::en::american::abigail).
+#                         (default: NbpkqMVS3CJeq2j8 / voices::en::american::zoey).
 #   --asr-wav FILE        WAV file supplied to asr_rest.  When omitted the
 #                         script uses the WAV produced by tts_rest.
 #   --asr-pcm FILE        Raw-PCM file (24 kHz, 16-bit, mono) supplied to
@@ -24,6 +24,7 @@
 #   --skip EXAMPLE,...    Comma-separated list of example names to skip.
 #                         Valid names: voices tts_rest tts_realtime
 #                                      tts_multiplex asr_rest asr_realtime
+#                                      s2s_realtime
 #   -h, --help            Show this help and exit.
 
 set -euo pipefail
@@ -33,7 +34,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 BUILD=false
 BUILD_DIR="build"
-VOICE_ID="KRo-uwfno-KcEgBM"   # voices::en::american::abigail
+VOICE_ID="NbpkqMVS3CJeq2j8"   # voices::en::american::zoey
 ASR_WAV=""
 ASR_PCM=""
 SKIP_LIST=""
@@ -151,14 +152,14 @@ run_example voices --list-only
 run_example tts_rest \
     --text "Hello from the GradiumPP integration script." \
     --voice "$VOICE_ID" \
-    --format wav \
+    --format pcm_16000 \
     --out "$TTS_REST_WAV"
 
 # 3. tts_realtime
 run_example tts_realtime \
     --text "Hello from the GradiumPP realtime script." \
     --voice "$VOICE_ID" \
-    --format wav \
+    --format pcm_16000 \
     --out "$TTS_RT_WAV"
 
 # 4. tts_multiplex
@@ -168,14 +169,16 @@ run_example tts_multiplex --voice "$VOICE_ID"
 popd > /dev/null
 
 # 5. asr_rest
+ASR_WAV_IS_RAW_PCM=false
 if [[ -z "$ASR_WAV" ]]; then
     if [[ -f "$TTS_REST_WAV" ]]; then
         ASR_WAV="$TTS_REST_WAV"
+        ASR_WAV_IS_RAW_PCM=true
     fi
 fi
 
 if [[ -n "$ASR_WAV" ]]; then
-    run_example asr_rest --file "$ASR_WAV" --format wav
+    run_example asr_rest --file "$ASR_WAV" --format pcm_16000
 else
     echo "  [SKIP] asr_rest — no WAV file available (tts_rest may have failed)"
     RESULTS+=("SKIP  asr_rest (no WAV file)")
@@ -184,11 +187,16 @@ fi
 
 # 6. asr_realtime — needs raw PCM (24 kHz, 16-bit, mono)
 if [[ -z "$ASR_PCM" ]]; then
-    # Try to produce one from the WAV with ffmpeg.
     if command -v ffmpeg &>/dev/null && [[ -f "$ASR_WAV" ]]; then
         PCM_FILE="$TMP_DIR/asr_input.pcm"
-        ffmpeg -y -i "$ASR_WAV" -ar 24000 -ac 1 -f s16le "$PCM_FILE" \
-            </dev/null >/dev/null 2>&1 && ASR_PCM="$PCM_FILE"
+        if [[ "$ASR_WAV_IS_RAW_PCM" == true ]]; then
+            # Headerless raw PCM from tts_rest --format pcm_16000, not a real WAV container.
+            ffmpeg -y -f s16le -ar 16000 -ac 1 -i "$ASR_WAV" -ar 24000 -ac 1 -f s16le "$PCM_FILE" \
+                </dev/null >/dev/null 2>&1 && ASR_PCM="$PCM_FILE"
+        else
+            ffmpeg -y -i "$ASR_WAV" -ar 24000 -ac 1 -f s16le "$PCM_FILE" \
+                </dev/null >/dev/null 2>&1 && ASR_PCM="$PCM_FILE"
+        fi
     fi
 fi
 
@@ -198,6 +206,23 @@ else
     echo "  [SKIP] asr_realtime — no raw-PCM file available" \
          "(provide --asr-pcm or install ffmpeg)"
     RESULTS+=("SKIP  asr_realtime (no PCM file; install ffmpeg or pass --asr-pcm)")
+    (( SKIP++ )) || true
+fi
+
+# 7. s2s_realtime — reuses the same raw-PCM input as asr_realtime
+S2S_PCM_OUT="$TMP_DIR/s2s_realtime_output.pcm"
+if [[ -n "$ASR_PCM" && -f "$ASR_PCM" ]]; then
+    run_example s2s_realtime \
+        --file "$ASR_PCM" \
+        --voice "$VOICE_ID" \
+        --input-format pcm \
+        --output-format pcm_16000 \
+        --target-language en \
+        --out "$S2S_PCM_OUT"
+else
+    echo "  [SKIP] s2s_realtime — no raw-PCM file available" \
+         "(provide --asr-pcm or install ffmpeg)"
+    RESULTS+=("SKIP  s2s_realtime (no PCM file; install ffmpeg or pass --asr-pcm)")
     (( SKIP++ )) || true
 fi
 
