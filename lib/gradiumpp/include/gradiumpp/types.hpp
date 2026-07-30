@@ -17,16 +17,25 @@ constexpr const char* USER_AGENT = "gradiumpp/1.0";
 // Voice
 // ---------------------------------------------------------------------------
 
+struct VoiceTag {
+    std::string category; ///< optional; empty when the tag has no category
+    std::string value;
+};
+
 struct Voice {
     std::string uid;
     std::string name;
     std::string description;
     std::string filename;
     double      start_s{0.0};
+    double      stop_s{0.0};      ///< populated on GET/PUT responses; not on the catalog list
     bool        is_catalog{false};
     bool        is_pro_clone{false};
+    bool        is_pending{false}; ///< true while an async voice clone is still processing
+    bool        has_audio{true};
     std::string language;
-    std::vector<std::string> tags;
+    std::string org_uid;
+    std::vector<VoiceTag> tags;
 };
 
 // ---------------------------------------------------------------------------
@@ -43,6 +52,9 @@ struct PronunciationRule {
 struct PronunciationDictionary {
     std::string uid;
     std::string org_uid;
+    std::string name;
+    std::string description;
+    std::string language;
     std::string created_at;
     std::vector<PronunciationRule> rules;
 };

@@ -15,29 +15,44 @@ using json = nlohmann::json;
 Voice parseVoiceJson(const json& v)
 {
     Voice voice;
-    voice.uid         = detail::stringOrEmpty(v, "uid");
-    voice.name        = detail::stringOrEmpty(v, "name");
-    voice.description = detail::stringOrEmpty(v, "description");
-    voice.filename    = detail::stringOrEmpty(v, "filename");
-    voice.language    = detail::stringOrEmpty(v, "language");
-    voice.start_s     = v.value("start_s", 0.0);
-    voice.is_catalog  = v.value("is_catalog", false);
+    voice.uid          = detail::stringOrEmpty(v, "uid");
+    voice.name         = detail::stringOrEmpty(v, "name");
+    voice.description  = detail::stringOrEmpty(v, "description");
+    voice.filename     = detail::stringOrEmpty(v, "filename");
+    voice.language     = detail::stringOrEmpty(v, "language");
+    voice.org_uid      = detail::stringOrEmpty(v, "org_uid");
+    voice.start_s      = v.value("start_s", 0.0);
+    voice.stop_s       = v.value("stop_s", 0.0);
+    voice.is_catalog   = v.value("is_catalog", false);
     voice.is_pro_clone = v.value("is_pro_clone", false);
+    voice.is_pending   = v.value("is_pending", false);
+    voice.has_audio    = v.value("has_audio", true);
 
     if (v.contains("tags") && v["tags"].is_array()) {
         for (const auto& tag : v["tags"]) {
             if (tag.is_object()) {
-                const std::string cat = detail::stringOrEmpty(tag, "category");
-                const std::string val = detail::stringOrEmpty(tag, "value");
-                if (!cat.empty() || !val.empty()) {
-                    voice.tags.push_back(cat + ":" + val);
-                }
+                VoiceTag vt;
+                vt.category = detail::stringOrEmpty(tag, "category");
+                vt.value    = detail::stringOrEmpty(tag, "value");
+                voice.tags.push_back(std::move(vt));
             } else if (tag.is_string()) {
-                voice.tags.push_back(tag.get<std::string>());
+                voice.tags.push_back(VoiceTag{"", tag.get<std::string>()});
             }
         }
     }
     return voice;
+}
+
+json serializeTags(const std::vector<VoiceTag>& tags)
+{
+    json arr = json::array();
+    for (const auto& tag : tags) {
+        json t;
+        if (!tag.category.empty()) t["category"] = tag.category;
+        t["value"] = tag.value;
+        arr.push_back(std::move(t));
+    }
+    return arr;
 }
 
 } // namespace
@@ -128,8 +143,8 @@ std::string VoiceClient::createVoice(const VoiceCreateRequest& request)
     if (request.start_s != 0.0) {
         req.multipart_fields.push_back({"start_s", std::to_string(request.start_s), {}});
     }
-    for (const auto& tag : request.tags) {
-        req.multipart_fields.push_back({"tags", tag, {}});
+    if (request.timeout_s != 10.0) {
+        req.multipart_fields.push_back({"timeout_s", std::to_string(request.timeout_s), {}});
     }
 
     auto response = _httpTransport->send(req);
@@ -139,7 +154,20 @@ std::string VoiceClient::createVoice(const VoiceCreateRequest& request)
 
 Voice VoiceClient::createVoiceTyped(const VoiceCreateRequest& request)
 {
-    return parseVoice(createVoice(request));
+    // POST /voices/ only returns {uid, error, was_updated} — fetch the full
+    // voice afterward so callers get back a complete Voice, same as getVoiceTyped().
+    const auto ack = json::parse(createVoice(request), nullptr, false);
+    if (ack.is_discarded()) {
+        throw std::runtime_error("[gradiumpp] createVoice: malformed response body");
+    }
+
+    const std::string error = detail::stringOrEmpty(ack, "error");
+    if (!error.empty()) {
+        throw std::runtime_error("[gradiumpp] createVoice failed: " + error);
+    }
+
+    const std::string uid = detail::stringOrEmpty(ack, "uid");
+    return getVoiceTyped(uid);
 }
 
 std::string VoiceClient::getVoice(const std::string& uid)
@@ -162,7 +190,9 @@ std::string VoiceClient::updateVoice(const std::string& uid,
     if (!request.name.empty())        body["name"]        = request.name;
     if (!request.description.empty()) body["description"] = request.description;
     if (!request.language.empty())    body["language"]    = request.language;
-    if (!request.tags.empty())        body["tags"]        = request.tags;
+    if (!request.tags.empty())        body["tags"]        = serializeTags(request.tags);
+    if (request.start_s.has_value())  body["start_s"]      = *request.start_s;
+    if (request.rank.has_value())     body["rank"]         = *request.rank;
 
     auto req = makeRequest(transport::HttpMethod::Put, voices::endpoints::base + uid, body.dump());
     auto response = _httpTransport->send(req);

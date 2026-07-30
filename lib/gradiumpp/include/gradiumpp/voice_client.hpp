@@ -4,26 +4,30 @@
 #include <gradiumpp/transport/http_transport.hpp>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 namespace gradium {
 
+/// POST /voices/ has no "tags" field — assign tags via PUT (VoiceUpdateRequest).
 struct VoiceCreateRequest {
     std::string name;                  ///< required
     std::string audio_file_path;       ///< required — local path to reference audio
     std::string description;
     std::string language;              ///< "en", "fr", "de", "es", "pt"
     std::string input_format;          ///< audio format; empty = auto-detect
-    double      start_s{0.0};         ///< start offset in the audio file
-    std::vector<std::string> tags;
+    double      start_s{0.0};          ///< start offset in the audio file
+    double      timeout_s{10.0};       ///< how long the server waits for processing before responding
 };
 
 struct VoiceUpdateRequest {
     std::string name;
     std::string description;
     std::string language;
-    std::vector<std::string> tags;
+    std::optional<double> start_s;
+    std::optional<double> rank;
+    std::vector<VoiceTag> tags;
 };
 
 /// CRUD client for Gradium voice management (/voices/).
@@ -39,6 +43,8 @@ public:
     std::vector<Voice>  listVoicesTyped(bool include_catalog = false);
 
     // POST /voices/  (multipart/form-data with audio file)
+    // Returns only {uid, error, was_updated}; createVoiceTyped() throws on
+    // a non-empty error, else follows up with GET /voices/{uid}.
     std::string createVoice(const VoiceCreateRequest& request);
     Voice       createVoiceTyped(const VoiceCreateRequest& request);
 

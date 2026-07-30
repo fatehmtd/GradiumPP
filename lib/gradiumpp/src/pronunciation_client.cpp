@@ -13,9 +13,12 @@ using json = nlohmann::json;
 PronunciationDictionary parseDictJson(const json& payload)
 {
     PronunciationDictionary dict;
-    dict.uid        = detail::stringOrEmpty(payload, "uid");
-    dict.org_uid    = detail::stringOrEmpty(payload, "org_uid");
-    dict.created_at = detail::stringOrEmpty(payload, "created_at");
+    dict.uid         = detail::stringOrEmpty(payload, "uid");
+    dict.org_uid     = detail::stringOrEmpty(payload, "org_uid");
+    dict.name        = detail::stringOrEmpty(payload, "name");
+    dict.description = detail::stringOrEmpty(payload, "description");
+    dict.language    = detail::stringOrEmpty(payload, "language");
+    dict.created_at  = detail::stringOrEmpty(payload, "created_at");
 
     if (payload.contains("rules") && payload["rules"].is_array()) {
         for (const auto& r : payload["rules"]) {
