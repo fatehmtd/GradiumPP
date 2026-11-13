@@ -134,8 +134,11 @@ fetchcontent_getproperties(cppcodec)
 if(NOT cppcodec_POPULATED)
     fetchcontent_populate(cppcodec)
 endif()
-add_library(cppcodec INTERFACE)
-target_include_directories(cppcodec INTERFACE ${cppcodec_SOURCE_DIR})
+# A parent build (e.g. VASDK with SonioxPP) may already define the target.
+if(NOT TARGET cppcodec)
+    add_library(cppcodec INTERFACE)
+    target_include_directories(cppcodec INTERFACE ${cppcodec_SOURCE_DIR})
+endif()
 
 if(GRADIUM_BUILD_EXAMPLES)
     # CLI11 — header-only argument parsing library, used by all examples
